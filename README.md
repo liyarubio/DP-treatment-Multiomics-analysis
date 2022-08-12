@@ -109,7 +109,7 @@ The code is ordered by Figure & Supplementary figure
 #### 24.1 GSEA
 #### 24.2 Barplot
 ### 25 Fig7E & FigS12E
-#### 25.1 Jund exp level class
-#### 25.2 Jund & activation
-#### 25.3 Jund level class in ACT assay
-#### 25.4 Jund & activation score in ACT assay
+####  25.1 Jund exp level class
+####  25.2 Jund & activation
+####  25.3 Jund level class in ACT assay
+####  25.4 Jund & activation score in ACT assay
