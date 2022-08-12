@@ -50,7 +50,7 @@ The code is ordered by Figure & Supplementary figure
 #### 8.1 featureplot
 #### 8.2 QC vInplot
 #### 8.3 phase
-### 9 Fig 40 Fig S8B
+### 9 Fig 4O Fig S8B
 #### 9.1 monocle trjectory
 #### 9.2 monocle gene exp
 #### 9.3 add annotation to monocle gene exp
