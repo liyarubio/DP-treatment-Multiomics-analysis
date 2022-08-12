@@ -1,17 +1,17 @@
 # DP-treatment-Multi-omics-analysis
-#"Decitabine-induced T cell remodeling facilitates a high antitumor response to PD-1 blockade therapy by promoting the expansion and effector function of CD8+ progenitor exhausted T cells" paper related code
+"Decitabine-induced T cell remodeling facilitates a high antitumor response to PD-1 blockade therapy by promoting the expansion and effector function of CD8+ progenitor exhausted T cells" paper related code
 
 # Catalog:
-# ATAC-seq_data_processing
-# WGBS_data_processing
-# In_vivo_assay_seurat.R
-# ACT_assay_seurat.R
-# Velocyto
-# pySCENIC
-# Analysis and visualization.R
+ATAC-seq_data_processing
+WGBS_data_processing
+In_vivo_assay_seurat.R
+ACT_assay_seurat.R
+Velocyto
+pySCENIC
+Analysis and visualization.R
 
-# Analysis and visualization.R catalog 
-# The code is ordered by Figure & Supplementary figure
+# Analysis and visualization.R catalog includes:
+The code is ordered by Figure & Supplementary figure
 
 # 0 PATH
 # 0 Source data
