@@ -2,7 +2,7 @@
 "Decitabine-induced T cell remodeling facilitates a high antitumor response to PD-1 blockade therapy by promoting the expansion and effector function of CD8+ progenitor exhausted T cells" paper related code
 
 # Catalog:
-## ATAC-seq_data_processing
+## [ATAC-seq_data_processing]https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/ATAC-seq_data_processing
 ## WGBS_data_processing
 ## In_vivo_assay_seurat.R
 ## ACT_assay_seurat.R
@@ -109,7 +109,7 @@ The code is ordered by Figure & Supplementary figure
 #### 24.1 GSEA
 #### 24.2 Barplot
 ### 25 Fig7E & FigS12E
-####  25.1 Jund exp level class
-####  25.2 Jund & activation
-####  25.3 Jund level class in ACT assay
-####  25.4 Jund & activation score in ACT assay
+#### 25.1 Jund exp level class
+#### 25.2 Jund & activation
+#### 25.3 Jund level class in ACT assay
+#### 25.4 Jund & activation score in ACT assay
