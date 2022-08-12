@@ -20,7 +20,7 @@ The code is ordered by Figure & Supplementary figure
 #### 1.2 volcano plot
 ### 2 Fig1G FigS3G
 #### 2.1 GO
-### 3 FigH
+### 3 Fig1H
 #### 3.1 expression heatmap
 ### 4 Fig S3A-l
 #### 4.1 featureplot
