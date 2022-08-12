@@ -1,0 +1,98 @@
+############ 1 fastqc ####################################
+for i in ConRep1 DPRep1 PD1Rep2 ConRep2 DPRep2 PD1Rep1
+do
+fastqc -o ../ATAC_result -t 10 ./${i}/${i}_R1.fq.gz ./${i}/${i}_R2.fq.gz 
+done
+
+multiqc ./1_fastqc
+
+########### 2 adaptor ######################
+for i in ConRep1 DPRep1 PD1Rep2 ConRep2 DPRep2 PD1Rep1
+do
+mkdir ../ATAC_result/2_Trim/$i
+trim_galore --fastqc --stringency 3 --paired ./${i}/${i}_R1.fq.gz ./${i}/${i}_R2.fq.gz -o ../ATAC_result/2_Trim/$i
+done
+
+######### 3 bowtie2 ###########################
+bowtie_index=/home/liyaru/public_Data/Bowtie2_mm10/mm10
+for i in ConRep1 DPRep1 PD1Rep2 ConRep2 DPRep2 PD1Rep1
+do
+R1=./2_Trim/$i/${i}_R1_val_1.fq.gz
+R2=./2_Trim/$i/${i}_R2_val_2.fq.gz
+out=./3_bowtie2/$i.bam
+bowtie2 -p 10 -x $bowtie_index -1 $R1 -2 $R2 | samtools view -u - | samtools sort -o $out
+done
+
+########## 4 QC ############################################
+#4.1 Build index
+for i in ConRep1 DPRep1 PD1Rep2 ConRep2 DPRep2 PD1Rep1
+do
+samtools index ./${i}.bam ./${i}.bai
+
+# bamCoverage -b *.bam -o *.bw
+
+#4.2 filter
+samtools view -h ./${i}.bam |grep -v chrM | samtools view -bS -q 30 -F 1804 -f 0x2 - > ${i}_rmM.bam 
+
+#4.3 duplicate
+java -Xms16g -Xmx32g -XX:ParallelGCThreads=8 -jar /home/liyaru/software/picard.jar MarkDuplicates I=${i}_rmM.bam O=${i}_rmM_rmDUP.bam M=${i}_dups.txt REMOVE_DUPLICATES=true > ${i}_dup.log 2>&1
+done
+
+
+#### 4.1 bam QC########################################
+fastqc -o ../5_fastqc_bam -t 5 `ls *rmLowMAPQ.bam` -f bam
+multiqc 5_fastqc_bam/
+
+
+#########5 MACS2#####################################
+for i in ConRep1 DPRep1 PD1Rep2 ConRep2 DPRep2 PD1Rep1
+do
+macs2 callpeak -g mm --nomodel -f BAMPE --shift -100 --extsize 200 -B --keep-dup 1 --outdir ./4_MACS2_new -t ./3_bam_new/${i}_rmM_rmDUP.bam -n ${i} &> ${i}_callpeak.log
+done
+
+
+#######6 deeptools####################################
+for i in ConRep1 DPRep1 PD1Rep2 ConRep2 DPRep2 PD1Rep1
+do
+samtools index ./${i}_rmM_rmDUP_rmLowMAPQ.bam ./${i}_rmM_rmDUP_rmLowMAPQ.bai
+done
+
+
+multiBamSummary bins -l Ctrl_1 Ctrl_2 DP_1 DP_2 PD1_1 PD1_2 --bamfiles `ls *rmLowMAPQ.bam` -o ../6_deeptools/result.npz --outRawCounts ../6_deeptools/outRawCounts.tab
+
+plotCorrelation -in ./6_deeptools/result.npz --corMethod spearman --skipZeros --plotTitle "Spearman Correlation" --whatToPlot heatmap --zMin 0.85 --zMax 1 --colorMap RdYlBu_r --plotNumbers -o ./6_deeptools/spearman.png --outFileCorMatrix ./6_deeptools/spearman_readCounts.tab
+
+
+plotCorrelation -in ./6_deeptools/result.npz --corMethod pearson --skipZeros --plotTitle "pearson Correlation" --whatToPlot heatmap --zMin 0.85 --zMax 1 --colorMap RdYlBu_r --plotNumbers -o ./6_deeptools/pearson.png --outFileCorMatrix ./6_deeptools/pearson_readCounts.tab
+
+
+#### 7 peaks ##############################
+for i in Con PD1 DP
+do
+bedops --element-of -1 ${i}Rep1_peaks.narrowPeak ${i}Rep2_peaks.narrowPeak >  ${i}_overlap_1_peak
+done
+
+bedops --merge *_overlap_1_peak > all_1_overlap.narrowPeak
+
+
+#### 8 homer ###############################
+findMotifsGenome.pl gain.bed /home/liyaru/miniconda3/share/homer/data/genomes/mm10 ../2_motif/gain/ -bg all_bg.bed -size 200 -p 5
+
+findMotifsGenome.pl loss.bed /home/liyaru/miniconda3/share/homer/data/genomes/mm10 ../2_motif/loss/ -bg all_bg.bed -size 200 -p 5
+
+findMotifsGenome.pl PD1_Ctrl_gain.bed /home/liyaru/miniconda3/share/homer/data/genomes/mm10 ../2_motif/PD1_Ctrl_gain/ -bg all_bg.bed -size 200 -p 5
+findMotifsGenome.pl PD1_Ctrl_loss.bed /home/liyaru/miniconda3/share/homer/data/genomes/mm10 ../2_motif/PD1_Ctrl_loss/ -bg all_bg.bed -size 200 -p 5
+
+
+#### 9 RPKM nomolized bw######################
+# /media/liyaru/LYR1/301project/1_MOUSE_T_Chi_DAC/ATAC_result/3_filter_bam
+multiBamSummary BED-file --BED /home/liyaru/public_Data/mm10_TSS_1kb_Txdb.bed  --bamfiles Veh_1_rmM_rmDUP_rmLowMAPQ.bam Veh_2_rmM_rmDUP_rmLowMAPQ.bam  DAC_1_rmM_rmDUP_rmLowMAPQ.bam DAC_2_rmM_rmDUP_rmLowMAPQ.bam -o ../13_TSS_ATAC_signal/result.npz --outRawCounts ../13_TSS_ATAC_signal/outRawCounts.tab
+
+for i in ConRep1_rmM_rmDUP_rmLowMAPQ ConRep2_rmM_rmDUP_rmLowMAPQ PD1Rep1_rmM_rmDUP_rmLowMAPQ PD1Rep2_rmM_rmDUP_rmLowMAPQ DPRep1_rmM_rmDUP_rmLowMAPQ DPRep2_rmM_rmDUP_rmLowMAPQ
+do
+bamCoverage -b ${i}.bam -o ${i}_RPKM.bw --normalizeUsing RPKM
+done
+
+multiBigwigSummary BED-file -b ConRep1_rmM_rmDUP_rmLowMAPQ_RPKM.bw ConRep2_rmM_rmDUP_rmLowMAPQ_RPKM.bw PD1Rep1_rmM_rmDUP_rmLowMAPQ_RPKM.bw PD1Rep2_rmM_rmDUP_rmLowMAPQ_RPKM.bw DPRep1_rmM_rmDUP_rmLowMAPQ_RPKM.bw DPRep2_rmM_rmDUP_rmLowMAPQ_RPKM.bw  --BED /home/liyaru/public_Data/mm10_TSS_1kb_Txdb.bed --outRawCounts ../6_deeptools_TSS/outRawCounts_RPKM_bw.tab -o ../6_deeptools_TSS/result_RPKM_bw.npz
+
+

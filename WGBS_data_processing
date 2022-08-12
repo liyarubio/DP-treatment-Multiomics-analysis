@@ -1,0 +1,98 @@
+########## 1 QC ##########################
+fastqc -o ../methy_result -t 12 `ls`
+multiqc ./methy_result/1_fastqc
+
+########## 2 adapter ########################
+for i in CON1 chi DAC chi-DAC
+do
+mkdir ../methy_result/2_Trim/$i
+trim_galore --fastqc --stringency 3 --paired ${i}_R1.fq.gz ${i}_R2.fq.gz -o ../methy_result/2_Trim/$i
+done
+
+######### 3 BSMAP map #########################
+#conda install BSMAP
+for i in CON1 chi DAC chi-DAC 
+do
+bsmap \
+-a ./20201222mousemethylation/${i}_R1.fq.gz \
+-b ./20201222mousemethylation/${i}_R2.fq.gz \
+-d /home/liyaru/public_Data/mm10.fa \
+-q 20 \
+-f 5 \
+-p 10 \
+-r 0 \
+-v 0.05 \
+-s 16 \
+-S 1 \
+-n 0 \
+2> ./methy_result/2_BSMAP/${i}_BSMAP_report.txt | \
+samtools view -b \
+-o ./methy_result/2_BSMAP/${i}_aligned.bam
+done
+
+
+########4 filter #########################
+#order
+for i in CON1 chi DAC chi-DAC 
+do
+sambamba sort \
+-m 64GB \
+--tmpdir ./tmp \
+-t 12 \
+-o ./3_sambamba/${i}_sorted.bam ./2_BSMAP/${i}_aligned.bam
+
+# filter
+sambamba markdup \
+--overflow-list-size 1000000 \
+--tmpdir tmp \
+-t 12 \
+./3_sambamba/${i}_sorted.bam \
+./3_sambamba_filter/${i}_filter.bam \
+2> ${i}_MarkDup_report.txt
+
+done
+
+# new
+i=CON1
+sambamba markdup \
+--overflow-list-size 1000000 \
+--tmpdir tmp \
+-t 12 \
+./3_sambamba/${i}_sorted.bam \
+./3_sambamba_filter/${i}_filter.bam \
+2> ${i}_MarkDup_report.txt
+
+
+#######5  MethylDackel #########################
+for i in CON1 chi DAC chi-DAC
+do
+MethylDackel extract \
+/home/liyaru/public_Data/mm10.fa \
+./3_sambamba_filter/${i}_filter.bam \
+--opref ./4_MethylDackel/${i}
+done
+
+
+###### 6 deeptools ###########################3
+multiBamSummary BED-file --BED /home/liyaru/public_Data/mm10_TSS_5kb.bed  --bamfiles chi-DAC_filter.bam  chi_filter.bam  CON1_filter.bam  DAC_filter.bam -o ../5_deeptools/result.npz --outRawCounts ../5_deeptools/outRawCounts.tab
+
+##### 7 check ##############
+less DAC_CpG.bedGraph | awk '{if ($4 <= 40 and $6 >= 5) print}'
+less DAC_CpG.bedGraph | awk '{if ($4 == 0) print}'
+
+samtools tview --reference /home/liyaru/public_Data/refdata-gex-mm10-2020-A/fasta/genome.fa -p chr1:3001629 DAC_filter.bam
+
+####8 bed  #############
+for i in CON chi DAC CD
+do
+bedtools coverage -a /home/liyaru/public_Data/mm10_TSS_5kb.bed -b ${i}_CpG.bedGraph > $i.bed
+done
+
+
+#####9 check methylation level > 50 ##### 
+for i in CON chi DAC CD
+do
+less DAC_CpG.bedGraph | awk '{if ($4 >= 50) print}' > ${i}_50.bed
+done
+
+

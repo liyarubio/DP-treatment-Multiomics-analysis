@@ -1,0 +1,24 @@
+#bash /media/liyaru/LYR/301project/2_MOUSE_PD1_DP/shell/4_SCENIC
+
+i=CD8
+pyscenic grn \
+--num_workers 10 \
+--output adj.${i}.tsv \
+--method grnboost2 \
+${i}.loom mm_tfs.txt
+
+pyscenic ctx \
+adj.${i}.tsv \
+/home/liyaru/public_Data/SCENIC/mm10__refseq-r80__10kb_up_and_down_tss.mc9nr.feather \
+--annotations_fname /home/liyaru/public_Data/SCENIC/motifs-v9-nr.mgi-m0.001-o0.0.tbl \
+--expression_mtx_fname ${i}.loom \
+--mode "dask_multiprocessing" \
+--output ${i}.reg.csv \
+--num_workers 10 \
+--mask_dropouts
+
+pyscenic aucell \
+${i}.loom \
+${i}.reg.csv \
+--output ${i}.SCENIC.loom \
+--num_workers 5

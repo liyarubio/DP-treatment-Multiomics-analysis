@@ -1,0 +1,8 @@
+velocyto run10x -m /home/liyaru/public_Data/mm10_rmsk.gtf /media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/RNA/Con-5-lib /home/liyaru/public_Data/refdata-gex-mm10-2020-A/genes/genes.gtf
+#Generating output file /media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/RNA/Con-5-lib/velocyto/Con-5-lib.loom
+
+velocyto run10x -m /home/liyaru/public_Data/mm10_rmsk.gtf /media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/RNA/DAC-5-lib /home/liyaru/public_Data/refdata-gex-mm10-2020-A/genes/genes.gtf
+
+velocyto run10x -m /home/liyaru/public_Data/mm10_rmsk.gtf /media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/RNA/DP-5-lib /home/liyaru/public_Data/refdata-gex-mm10-2020-A/genes/genes.gtf
+
+velocyto run10x -m /home/liyaru/public_Data/mm10_rmsk.gtf /media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/RNA/PD1-5-lib /home/liyaru/public_Data/refdata-gex-mm10-2020-A/genes/genes.gtf
