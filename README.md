@@ -1,13 +1,13 @@
-# DP-treatment-Multi-omics-analysis
+# DP-treatment-Multiomics-analysis
 Code for "Decitabine-induced T cell remodeling facilitates a high antitumor response to PD-1 blockade therapy by promoting the expansion and effector function of CD8+ progenitor exhausted T cells"
 
-## [ATAC-seq_data_processing](https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/ATAC-seq_data_processing)
-## [WGBS_data_processing](https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/WGBS_data_processing)
-## [In_vivo_assay_seurat.R](https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/In_vivo_assay_seurat.R)
-## [ACT_assay_seurat.R](https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/ACT_assay_seurat.R)
-## [Velocyto](https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/Velocyto)
-## [pySCENIC](https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/pySCENIC)
-## [Analysis and visualization.R](https://github.com/liyarubio/DP-treatment-Multi-omics-analysis/blob/main/Analysis%20and%20visualization.R)
+## [ATAC-seq_data_processing](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/ATAC-seq_data_processing)
+## [WGBS_data_processing](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/WGBS_data_processing)
+## [In_vivo_assay_seurat.R](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/In_vivo_assay_seurat.R)
+## [ACT_assay_seurat.R](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/ACT_assay_seurat.R)
+## [Velocyto](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/Velocyto)
+## [pySCENIC](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/pySCENIC)
+## [Analysis and visualization.R](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/Analysis%20and%20visualization.R)
 
 # Analysis and visualization.R includes:
 The code is ordered by Figure & Supplementary figure
@@ -43,7 +43,7 @@ The code is ordered by Figure & Supplementary figure
 ##### 6.5.3 Ctrl CpG in promoter
 ##### 6.5.4 Promoter CpG boxplot
 ### 7 Fig4 L-M
-#### 7.1 tsne
+#### 7.1 TSNE
 #### 7.2 dotplot
 #### 7.3 ratio
 ### 8 Fig S7 CD8+ T cells
@@ -63,17 +63,16 @@ The code is ordered by Figure & Supplementary figure
 #### 11.2 diversity
 #### 11.3 top proportion
 ### 12 Fig5B-D
-#### 12.1 CLone size
+#### 12.1 Clone size
 #### 12.2 clone size TSNE
 #### 12.3 size ratio by cluster
 #### 12.4 highly expanded (size > 10)
-### 13 Fig 5F
+### 13 Fig 5E-F
 #### 13.1 top 10 clone by sample
-#### 13 Fig 5E
-#### 13.1 heatmap
+#### 13.2 heatmap
 ### 14 FigS9H S9J
 #### 14.1 GO
-#### 14.2 CO Top50
+#### 14.2 C0 Top50
 ### 15 Fig6A-B
 #### 15.1 DEG
 #### 15.2 volcano
@@ -108,7 +107,7 @@ The code is ordered by Figure & Supplementary figure
 #### 24.1 GSEA
 #### 24.2 Barplot
 ### 25 Fig7E & FigS12E
-#### 25.1 Jund exp level class
-#### 25.2 Jund & activation
-#### 25.3 Jund level class in ACT assay
-#### 25.4 Jund & activation score in ACT assay
+#### 25.1 JunD exp level class
+#### 25.2 JunD & activation
+#### 25.3 JunD level class in ACT assay
+#### 25.4 JunD & activation score in ACT assay
