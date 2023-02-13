@@ -1,5 +1,5 @@
 # DP-treatment-Multiomics-analysis
-Code for "Decitabine-induced T cell remodeling facilitates a high antitumor response to PD-1 blockade therapy by promoting the expansion and effector function of CD8+ progenitor exhausted T cells"
+Code for "Decitabine-priming increases anti-PD-1 antitumor efficacy by promoting CD8+ progenitor exhausted T-cell expansion in tumor models"
 
 ## [ATAC-seq_data_processing](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/ATAC-seq_data_processing)
 ## [WGBS_data_processing](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/WGBS_data_processing)
