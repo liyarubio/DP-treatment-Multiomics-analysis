@@ -1,0 +1,3348 @@
+---
+title: "scRNA-seq, scTCR-seq, ATAC-seq, WGBS, Analysis and Visualization"
+author: "Yaru Li"
+date: "2023-02-10"
+Data: "GSE209965"
+---
+
+# 0 Library & Path
+
+```{r,message=FALSE,warning=FALSE}
+library(Seurat)
+library(patchwork)
+library(dplyr)
+library(plyr)
+library(tidyverse)
+library(ggsci)
+library(RColorBrewer)
+library(monocle3)
+library(data.table)
+library(readxl)
+library(data.table)
+library(ggpubr)
+library(rstatix)
+library(grid)
+library(pheatmap)
+library(scales)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+library(Hmisc)
+library(VennDiagram)
+library(destiny)
+library(ggplot2)
+library(ggrepel)
+
+# in vivo assay
+# setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP")  
+
+# ACT assay
+setwd("/media/liyaru/LYR/301project/3_clone")
+
+```
+
+# 0 Set path in R markdown
+```{r,setup,warning=FALSE}
+# setwd in markdown all chunk (Rmd)
+path <- "/media/liyaru/LYR/301project/3_clone"
+knitr::opts_knit$set(root.dir = path)
+```
+
+# 0 Color
+
+```{r,message=FALSE,warning=FALSE}
+color1 <- brewer.pal(8, "Set1")
+color1 <- c("#E41A1C","#377EB8","#4DAF4A","#984EA3","#FF7F00","#A65628","#F781BF")
+
+color2 <- brewer.pal(8, "Set2")
+
+rdwhbu <- colorRampPalette(c("navy", "white", "brown3"))
+rdwhbu_re <- colorRampPalette(c("brown3", "white", "navy"))
+
+color_4_sample <- c("black","#285291","#579125","#B9181E")
+color_4_sample_1 <- c(rgb(23,23,23,160, maxColorValue = 255),
+                      "#285291","#579125","#B9181E")
+
+color3 <- c("#FEE8C8","#FDBB84","#FC8D59","#D7301F","#7F0000")
+
+color4 <- c("#FDD49E","#EF6548","#7F0000")
+
+color7 <- brewer.pal(7, "Set2")
+
+color_clone <- c("grey",
+                 "#4DAF4A","blue")
+
+color_clone <- c(rgb(23,23,23,50, maxColorValue = 255),
+                 "#4DAF4A","blue")
+
+```
+
+# 1 scRNA-seq in ACT assay
+## 1.0 data
+```{r,warning=FALSE}
+merge_inter <- readRDS("/media/liyaru/LYR/301project/3_clone/result/RDS/merge_inter.rds")
+DimPlot(merge_inter)
+```
+
+## 1.1 DEG
+
+```{r,message=FALSE,warning=FALSE}
+# merge_inter@meta.data$cluster_sample<-paste0(merge_inter@meta.data$celltype,"_",merge_inter@meta.data$sample)
+# table(merge_inter$cluster_sample)
+# DefaultAssay(merge_inter) <- "RNA"
+# 
+# # DP vs p
+# Pro.markers <- FindMarkers(merge_inter,
+#                            group.by = "cluster_sample",
+#                            ident.1 = "Proliferating_DP",
+#                            ident.2 ="Proliferating_PD1",
+#                            #test.use = "MAST"
+#                            logfc.threshold=0
+# )
+# # fwrite(Pro.markers,
+# #        "./result/table/2_Pro_DEG.csv",
+# #        row.names =T )
+# 
+# # P vs C
+# Pro.markers <- FindMarkers(merge_inter,
+#                            group.by = "cluster_sample",
+#                            ident.1 = "Proliferating_PD1",
+#                            ident.2 ="Proliferating_Con",
+#                            #test.use = "MAST"
+#                            logfc.threshold=0
+# )
+# # fwrite(Pro.markers,
+# #        "./result/table/2_Pro_DEG_P_C.csv",
+# #        row.names =T )
+# 
+# # D vs C
+# Pro.markers <- FindMarkers(merge_inter,
+#                            group.by = "cluster_sample",
+#                            ident.1 = "Proliferating_DAC",
+#                            ident.2 ="Proliferating_Con",
+#                            #test.use = "MAST"
+#                            logfc.threshold=0
+# )
+# # fwrite(Pro.markers,
+# #        "./result/table/2_Pro_DEG_D_C.csv",
+# #        row.names =T )
+```
+
+## 1.2 Volcano plot
+
+```{r,message=FALSE,warning=FALSE}
+
+a <- fread("./result/table/2_Pro_DEG.csv")
+
+# a <- fread("./result/table/2_Pro_DEG_P_C.csv")  
+# a <- fread("./result/table/2_Pro_DEG_D_C.csv")
+# a <- fread("./result/table/2_Non-Pro_DEG.csv")
+
+Dat<- as.data.frame(a)
+
+Dat$gene <- Dat$V1
+
+fc = 0.2
+fc1 = 0.5
+
+Dat$threshold <- 'Other'
+Dat[Dat$p_val_adj < 0.05 & Dat$avg_log2FC > fc,'threshold'] <- 'Up'
+Dat[Dat$p_val_adj < 0.05 & Dat$avg_log2FC > fc1,'threshold'] <- 'Up-Top'
+Dat[Dat$p_val_adj < 0.05 & Dat$avg_log2FC < -fc,'threshold'] <- 'Down'
+Dat[Dat$p_val_adj < 0.05 & Dat$avg_log2FC < -fc1,'threshold'] <- 'Down-Top'
+table(Dat$threshold)
+Dat$threshold <- factor(Dat$threshold,levels = c('Up','Up-Top','Down','Down-Top','Other'))
+
+ggplot(Dat,aes(x=avg_log2FC,y=-log10(p_val_adj),color=threshold))+
+  geom_point()+
+  scale_color_manual(values=c("#EEBBBB","#CD3333","#AAAAD4", "#000080","#808080"))+
+  geom_text_repel(
+    #data = Dat[(Dat$p_val_adj<0.05 & abs(Dat$avg_log2FC) > fc1)| Dat$V1 %in% c("Jund","Jun") ,],
+    data = Dat[(Dat$p_val_adj<0.05 & abs(Dat$avg_log2FC) > fc1),],
+    aes(label = gene),
+    size = 5,
+    segment.color = "black", show.legend = FALSE,
+    max.overlaps=40)+#添加关注的点的基因名
+  theme_bw()+#修改图片背景
+  theme(
+    legend.title = element_blank(),#不显示图例标题
+  )+
+  ylab('-log10 (p-adj)')+#修改y轴名称
+  xlab('log2 (FoldChange)')+#修改x轴名称
+  geom_vline(xintercept=c(-1,1),lty=3,col="black",lwd=0.5) +#添加横线|FoldChange|>2
+  geom_hline(yintercept = -log10(0.05),lty=3,col="black",lwd=0.5)#添加竖线padj<0.05
+```
+
+## 1.3 GO
+
+```{r,message=FALSE,warning=FALSE}
+
+# a <- fread("./result/table/2_Pro_DEG.csv")
+# a <- fread("./result/table/2_Pro_DEG_P_C.csv")
+# a <- fread("./result/table/2_Pro_DEG_D_C.csv")
+
+a <- a[a$avg_log2FC > 0.2 & a$p_val_adj < 0.05,]
+ego <- enrichGO(
+  gene          = a$V1,
+  keyType       = "SYMBOL",
+  OrgDb         =  org.Mm.eg.db,
+  ont           = "ALL",
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.05,
+  #readable      = TRUE
+)
+
+t <- ego@result
+t <- t[as.numeric(t$p.adjust )<=0.05,]
+
+#select terms
+terms <-c ("T cell differentiation",
+           "ribonucleoprotein complex biogenesis",
+           "protein folding",
+           "cellular response to chemical stress",
+           "regulation of T cell activation",
+           "nuclear transport",
+           "regulation of immune effector process",
+           "regulation of adaptive immune response",
+           "regulation of DNA metabolic process",
+           "protein polyubiquitination",
+           "regulation of mRNA metabolic process",
+           "T cell proliferation",
+           "cell killing")
+
+t <- t[t$Description %in% terms,]
+
+ttt <- t$Description
+
+barplot(ego,showCategory = ttt)
+clusterProfiler::dotplot(ego,showCategory = ttt)+
+  scale_color_gradientn(colors = c(rdwhbu_re(100)[1:45],rdwhbu_re(100)[55:100]))
+
+```
+
+## 1.4 Heatmap of gene expression
+
+```{r,message=FALSE,warning=FALSE}
+# get average expression
+t <- AverageExpression(merge_inter,assays = "RNA",group.by = "cluster_sample")
+t <- t[["RNA"]]
+t <- as.data.frame(t)
+t <- t[,c("Non-Proliferating_Con","Non-Proliferating_DAC","Non-Proliferating_PD1","Non-Proliferating_DP",
+          "Proliferating_Con","Proliferating_DAC","Proliferating_PD1","Proliferating_DP")]
+
+# get from table in averageExpression
+a=as.data.frame(read_excel("./result/table/genes_for_heatmap.xlsx"))
+rownames(a) <- a$...1
+a <- a[,2:9]
+
+pheatmap::pheatmap(a,scale = "row",
+                   cluster_rows=F,cluster_cols = F,
+                   color=rdwhbu(100))
+
+
+```
+
+## 1.5 Single cell reduction
+
+```{r,message=FALSE,warning=FALSE}
+####--------- featureplot--------------
+FeaturePlot(merge_inter,
+            features = c("Cd3d","Cd3e",
+                         "Cd8a","Cd8b1",
+                         "Pdcd1","Ctlas","Tigit",
+                         "Havcr2","Gzmb","Nr4a2","Lef1",
+                         "Gzmk","Lef1","Tcf7",
+                         "Ifng","Cx3cr1","Mki67"),
+            
+            ncol=4,
+            pt.size = 1)& 
+  scale_color_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))
+
+####--------- phase--------------
+g2m.genes<-c("Hmgb2","Cdk1","Nusap1","Ube2c","Birc5","Tpx2","Top2a","Ndc80","Cks2","Nuf2",
+             "Cks1b","Mki67","Tmpo","Cenpf","Tacc3","Fam64a","Smc4","Ccnb2","Ckap2l","Ckap2",
+             "Aurkb","Bub1","Kif11","Anp32e","Tubb4b","Gtse1","Kif20b","Hjurp","Cdca3","Hn1",
+             "Cdc20","Ttk","Cdc25c","Kif2c","Rangap1","Ncapd2","Dlgap5","Cdca2","Cdca8",
+             "Ect2","Kif23","Hmmr","Aurka","Psrc1","Anln","Lbr","Ckap5","Cenpe","Ctcf","Nek2",
+             "G2e3","Gas2l3","Cbx5","Cenpa")
+s.genes<-c("Mcm5","Pcna","Tyms","Fen1","Mcm2","Mcm4","Rrm1","Ung","Gins2","Mcm6","Cdca7","Dtl",
+           "Prim1","Uhrf1","Mlf1ip","Hells","Rfc2","Rpa2","Nasp","Rad51ap1","Gmnn","Wdr76",
+           "Slbp","Ccne2","Ubr7","Pold3","Msh2","Atad2","Rad51","Rrm2","Cdc45","Cdc6","Exo1",
+           "Tipin","Dscc1","Blm","Casp8ap2","Usp1","Clspn","Pola1","Chaf1b","Brip1","E2f8")
+
+merge_inter <- CellCycleScoring(merge_inter, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+DimPlot(merge_inter,group.by = "Phase",
+        cols = color1[3:5],
+        pt.size = 0.6)
+
+####--------- celltype--------------
+DimPlot(merge_inter,group.by = 'celltype',
+        label = F,
+        #pt.size = 1,
+        label.size = 7,
+        cols=color1[c(2,1)],
+        pt.size = 0.6)
+
+DimPlot(merge_inter,group.by = 'celltype',pt.size = 0.6,
+        split.by = "sample",
+        cols=color1[c(2,1)])
+
+#####--------celltype number & ratio-----------------------
+m <- merge_inter@meta.data
+m$number <- 1
+
+ggplot(m,aes(sample,number,fill=celltype))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 16)
+
+
+m <- ddply(m,'sample',transform,percent = 1/sum(number)*100)
+
+
+ggplot(m,aes(sample,percent,fill=celltype))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 20)+
+  scale_fill_manual(values = color1[c(2,1)])
+
+t<- table(merge_inter$orig.ident,merge_inter$celltype)
+x <- matrix(t[3:4,1:2],nrow = 2,ncol = 2)
+fisher.test(x)
+```
+
+
+## 1.6 Venn
+```{r,message=FALSE,warning=FALSE}
+a <- fread("./result/table/2_Pro_DEG.csv")
+a <- a[a$avg_log2FC > 0.2 & a$p_val_adj < 0.05,]
+pro <- a$V1
+
+a <- fread("./result/table/2_Non-Pro_DEG.csv")
+a <- a[a$avg_log2FC > 0.2 & a$p_val_adj < 0.05,]
+no <- a$V1
+
+t <- intersect(pro,no)
+
+up <- c(list(pro),list(no))
+names(up) <- c('Pro','NO-Pro')
+
+p = venn.diagram(
+  x = up,
+  filename=NULL,
+  fill= color1[1:2],
+  width = 1000,
+  height = 1000, 
+)
+
+grid.draw(p)
+```
+
+## 1.7 GSEA
+```{r,message=FALSE,warning=FALSE}
+library(clusterProfiler)
+# colnames(merge_inter@meta.data)
+# DimPlot(merge_inter,group.by = "cluster_sample")
+# unique(merge_inter$cluster_sample)
+# 
+# DefaultAssay(merge_inter) <- "RNA"
+# markers <- FindMarkers(merge_inter,
+#                        group.by = "cluster_sample",
+#                        ident.1 = "Proliferating_DP",
+#                        ident.2 = "Proliferating_PD1",
+#                        #test.use = "MAST"
+#                        logfc.threshold=0
+# )
+# fwrite(markers,
+#        "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/Pro.DP_PD1.csv",
+#        row.names =T )
+
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/Pro.DP_PD1.csv")
+glist <- a$avg_log2FC
+names(glist) <- a$V1
+glist <- sort(glist,decreasing = T)
+names(glist) <- toupper(names(glist))
+
+geneset <- read.gmt("/media/liyaru/LYR/301project/public_data/GSEA.gmt/c7.all.v7.5.1.symbols.gmt")
+t <- as.data.frame(unique(geneset$term))
+
+#p.adjust.methods
+gsea <- GSEA(glist, TERM2GENE=geneset, verbose=FALSE,pvalueCutoff=1,seed=618)
+t <- gsea@result
+# fwrite(t,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/15.Proliferating.GSEA.c7.immunologic signature gene sets.csv")
+
+enrichplot::gseaplot2(gsea,geneSetID = "GSE41867_DAY8_EFFECTOR_VS_DAY30_EXHAUSTED_CD8_TCELL_LCMV_CLONE13_UP",pvalue_table=T)
+enrichplot::gseaplot2(gsea,geneSetID = "GSE41867_DAY6_EFFECTOR_VS_DAY30_MEMORY_CD8_TCELL_LCMV_ARMSTRONG_UP",pvalue_table=T)
+enrichplot::gseaplot2(gsea,geneSetID = "GSE20754_WT_VS_TCF1_KO_MEMORY_CD8_TCELL_DN",pvalue_table=T)
+
+```
+
+### 1.7.1 GSEA Barplot 
+```{r,message=FALSE,warning=FALSE}
+t <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/17.selected_GSEA_Pro.xlsx")
+t$LogP <- log10(t$pvalue)
+summary(t)
+t <- t[order(-t$NES),]
+
+t$Description <- factor(t$Description,levels=t$Description)
+
+ggplot(t, aes(x=NES, y=Description, fill=-LogP)) + 
+  geom_bar(stat='identity') + 
+  scale_fill_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))+
+  theme_classic()+ ylab(NULL)
+
+```
+###  1.7.2 GSEA between each two group
+```{r,message=FALSE,warning=FALSE}
+###-------- DEG----------------
+# table(CD8$cluster_sample)
+# DefaultAssay(CD8) <- "RNA"
+# 
+# sample_pair <- list(c("DAC","Con"),c("PD1","Con"),c("DP","Con"),c("DP","PD1"))
+# 
+# for (j in 0:6){
+#   #j=0
+#   print(j)
+#   for (i in sample_pair){
+#     print(i)
+#     CD8.markers <- FindMarkers(CD8,
+#                                group.by = "cluster_sample",
+#                                ident.1 = paste0(j,"_",i[1]),
+#                                ident.2 = paste0(j,"_",i[2]),
+#                                #test.use = "MAST"
+#                                logfc.threshold=0)
+#     fwrite(CD8.markers,paste0("/media/liyaru/LYR/301project/Fix/3_DEG/1_DEG/C",j,"_",i[1],"_",i[2],".csv"),row.names = T)
+#     
+#   }
+# }
+# 
+# #check 
+# a <- fread("/media/liyaru/LYR/301project/Fix/3_DEG/1_DEG/C0_DP_PD1.csv")
+# a <- a[a$avg_log2FC > 0 & a$p_val < 0.05,]
+# 
+# ####-------- GSEA--------------
+# #c7: immunologic signature gene sets
+# geneset <- read.gmt("/media/liyaru/LYR/301project/public_data/GSEA.gmt/c7.all.v7.5.1.symbols.gmt")
+# 
+# for (j in 0:6){
+#   #j=0
+#   print(j)
+#   for (i in sample_pair){
+#     print(i)
+#     CD8.markers <- fread(paste0("/media/liyaru/LYR/301project/Fix/3_DEG/1_DEG/C",j,"_",i[1],"_",i[2],".csv"))
+#     glist <- CD8.markers$avg_log2FC
+#     names(glist) <- CD8.markers$V1
+#     glist <- sort(glist,decreasing = T)
+#     names(glist) <- toupper(names(glist))
+#     
+#     gsea <- GSEA(glist, TERM2GENE=geneset, verbose=FALSE,pvalueCutoff=1,seed=618)
+#     t <- gsea@result
+# 
+#     fwrite(t,
+#            paste0("/media/liyaru/LYR/301project/Fix/3_DEG/2_GSEA/C",j,"_",i[1],"_",i[2],".csv"),
+#            row.names =T )
+#     
+#   }
+# }
+
+# ####--------- merge GSEA----------------
+# m <- NULL
+# 
+# # wide data 
+# for (j in 0:6){
+#   #j=0
+#   print(j)
+#   for (i in sample_pair){
+#     print(i)
+#     a <- fread(paste0("/media/liyaru/LYR/301project/Fix/3_DEG/2_GSEA/C",j,"_",i[1],"_",i[2],".csv"))
+#     a <- a[,c(2,6,7)]
+#     colnames(a)[2:3] <- paste0("C",j,"_",i[1],"_",i[2],".",colnames(a)[2:3])
+#     
+#     if(is.null(m)){
+#       m=a
+#     }else{
+#       m <- merge(m,a,by="ID")
+#     }
+#   }
+# }
+# 
+# fwrite(m,"/media/liyaru/LYR/301project/Fix/3_DEG/2_GSEA_merge/1.GAEA.all.merge.csv")
+
+# m <- fread("/media/liyaru/LYR/301project/Fix/3_DEG/2_GSEA_merge/1.GAEA.all.merge.csv")
+# # filter p value
+# mm <- m[rowSums(m[,c(seq(3,ncol(m),2))] < 0.05)==length(c(seq(3,ncol(m),2))),]
+# 
+# # long data 
+# m <- NULL
+# for (j in 0:6){
+#   #j=0
+#   print(j)
+#   for (i in sample_pair){
+#     print(i)
+#     a <- fread(paste0("/media/liyaru/LYR/301project/Fix/3_DEG/2_GSEA/C",j,"_",i[1],"_",i[2],".csv"))
+#     a <- a[,c(2,6,7)]
+#     a$class <- paste0(j,"_",i[1],"_",i[2])
+#     
+#     if(is.null(m)){
+#       m=a
+#     }else{
+#       m <- rbind(m,a)
+#     }
+#   }
+# }
+# 
+# fwrite(m,"/media/liyaru/LYR/301project/Fix/3_DEG/2_GSEA_merge/1.GAEA.all.merge.long.csv")
+
+
+####-------- GSEA plot--------------
+m <- fread("/media/liyaru/LYR/301project/Fix/3_DEG/2_GSEA_merge/1.GAEA.all.merge.long.csv")
+m <- as.data.frame(m)
+mm <- m[grep("GSE9650",m$ID),]
+
+# term <- unique(m[grep("GSE16522",m$ID),'ID'])
+
+ggplot(mm,aes(x = class,y = ID))+
+  geom_point(aes(
+    #color = pvalue,
+    color=NES,
+    size=pvalue))+
+  #scale_size(range=c(0,0.1))+
+  #scale_size_continuous(range=c(0,0.1))+
+  scale_size_continuous(limits =c(0,0.05),range = c(6,3))+
+  scale_color_gradientn(colors = c(rdwhbu_re(100)[1:45],rdwhbu_re(100)[55:100]))+
+  theme_bw()+
+  RotatedAxis()
+
+t <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/16.selected_GSEA.xlsx")
+term <- t$ID
+mm <- m[m$ID %in% term,]
+
+ggplot(mm,aes(x = class,y = ID))+
+  geom_point(aes(
+    #color = pvalue,
+    color=NES,
+    size=pvalue))+
+  #scale_size(range=c(0,0.1))+
+  #scale_size_continuous(range=c(0,0.1))+
+  scale_size_continuous(limits =c(0,0.05),range = c(6,3))+
+  scale_color_gradientn(colors = c(rdwhbu_re(100)[1:45],rdwhbu_re(100)[55:100]))+
+  theme_bw()+
+  RotatedAxis()
+
+```
+
+
+
+## 1.8 JunD level & Activation relationship
+```{r,message=FALSE,warning=FALSE}
+
+####-------- Jund level class in ACT assay------------------
+t <- as.data.frame(GetAssayData(merge_inter,assay = "RNA"))
+
+tt <-as.data.frame(t(t["Jund",]))
+summary(tt)
+tt$cell <- rownames(tt)
+
+quantile(tt$Jund)
+#cut by quantile
+tt <- tt[order(tt$Jund),]
+tt$Jund_class <- as.character(as.numeric(cut(1:nrow(tt),breaks = 4)))
+table(tt$Jund_class)
+
+#cut by median
+# ttt <- median(tt$Jund)
+# tt[tt$Jund > ttt,'Jund_class'] <- "JunD High"
+# tt[tt$Jund < ttt,'Jund_class'] <- "JunD Low"
+# table(tt$Jund_class)
+
+merge_inter <- AddMetaData(merge_inter,tt)
+
+###------Jund & activation score in ACT assay ----------
+DefaultAssay(merge_inter) <- "RNA"
+t <- read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GO/GO_term_summary_20220103_120331_T_cell_activation.xlsx")
+tt <- unique(t$Symbol)
+merge_inter <- AddModuleScore(merge_inter,features = list(tt),name = "T cell activation")
+t <- merge_inter@meta.data
+p <- ggboxplot(t, x="celltype",
+               y="T.cell.activation1",
+               fill = 'Jund_class',
+               outlier.shape=NA,
+               palette =  c("#38389C","#AAAAD4","#EEBBBB","#D86060")
+)
+stat_wilcox <- wilcox_test(group_by(t, celltype), T.cell.activation1 ~ Jund_class)  
+stat_wilcox <- add_significance(stat_wilcox, 'p')  
+stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'celltype')
+
+p+ stat_pvalue_manual(stat_wilcox.test, 
+                      #label = 'p', 
+                      label = 'p.signif',
+                      tip.length = 0.005,
+                      hide.ns=T)  
+```
+
+
+
+# 2 scTCR-seq in ACT assay
+
+## 2.1 Add TCR information from cellranger output
+```{r,message=FALSE,warning=FALSE}
+sup <- c("_1","_2","_3","_4") # barcode sup in Seurat
+j=1
+for (i in c("CON-0830-TCR","D-0830-TCR","DP-0830-TCR","P-0830-TCR")){
+  tcr <- read.csv(paste0("./cellranger/2_TCR/",i,"/outs/filtered_contig_annotations.csv"))
+  tcr <- tcr[!duplicated(tcr$barcode), ]
+  names(tcr)[names(tcr) == "raw_clonotype_id"] <- "clonotype_id"
+  
+  clono <- read.csv(paste0("./cellranger/2_TCR/",i,"/outs/clonotypes.csv"))
+  
+  tcr <- merge(tcr, clono)
+  tcr$sample <- i
+  tcr$barcode <- paste0(tcr$barcode,sup[j])
+  j=j+1
+  
+  if (i=="CON-0830-TCR"){
+    tcr_all <-tcr
+  }else{
+    tcr_all <- rbind(tcr_all,tcr)
+  }
+}
+rownames(tcr_all) <- tcr_all$barcode
+
+merge_inter <- AddMetaData(merge_inter,metadata = tcr_all)
+
+merge_inter$sample_clonotype_id <- paste0(merge_inter$orig.ident,"_",merge_inter$clonotype_id)
+
+merge_inter$clonotype <- merge_inter$clonotype_id 
+merge_inter@meta.data[merge_inter@meta.data$clonotype_id %in%  c('clonotype1'),'clonotype'] <- 'Main'
+merge_inter@meta.data[grepl('clonotype',merge_inter@meta.data$clonotype),'clonotype'] <- 'Other'
+
+merge_inter@meta.data[is.na(merge_inter@meta.data$clonotype),"clonotype"] = "no TCR"
+
+
+DimPlot(merge_inter,group.by = "clonotype",
+        cols =color_clone,
+        pt.size = 0.1)
+
+
+table(merge_inter$clonotype)
+
+```
+
+# 3 WGBS of CD8+ T cells in vitro
+
+## 3.1 Find DMR using DSS library
+```{r,message=FALSE,warning=FALSE}
+# library("DSS")
+# library("bsseq") 
+# read.faster <- function(file, header = FALSE, sep = "\t", showProgress = TRUE, skip = 0){
+#   
+#   suppressPackageStartupMessages(library("data.table"))
+#   Tx = data.frame(fread(file = file, header = header, sep = sep, showProgress = showProgress, skip = skip))
+#   return(Tx)
+# }
+# 
+# read.bedgraph <- function(file, showProgress = FALSE){
+#   
+#   Tx = read.faster(file = file, header = FALSE, sep = "\t", skip = 1, showProgress = showProgress)
+#   return(Tx)
+# }
+# 
+# SRX = c("Ctrl","DAC")
+# 
+# #WGBS CpG bedgraph
+# files=c("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/4_MethylDackel/CON_CpG.bedGraph",
+#         "/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/4_MethylDackel/DAC_CpG.bedGraph")
+# 
+# allDat = lapply(files, function(file){
+#   cat("Remian", length(files) - match(file, files), "\n")
+#   T1 = read.bedgraph(file)
+#   T2 = data.frame(chr = T1[,1], pos = T1[,3], N = T1[,5] + T1[,6], X = T1[,5]) 
+#   return(T2)
+# })
+# head(allDat[[1]])
+# t <- allDat[[1]]
+# t[t$chr=="chr1" & t$pos==49455995,]
+# 
+# BSobj   <- makeBSseqData(allDat, SRX) 
+# dmlTest <- DMLtest(BSobj, group1 = "Ctrl",group2 = "DAC", smoothing = T)
+# 
+# dmls    <- callDML(dmlTest, delta = 0.1, p.threshold = 0.05)
+# dmrs    <- callDMR(dmlTest, delta = 0.1, p.threshold = 0.05)
+# 
+# fwrite(dmrs, file="/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/1_DMR.bed",sep="\t")
+# fwrite(dmls, file="/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/2_DML.bed",sep="\t")
+```
+
+## 3.2 DMR annotation
+```{r,message=FALSE,warning=FALSE}
+library("ChIPseeker")
+library("TxDb.Mmusculus.UCSC.mm10.knownGene")
+
+a <- fread("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/1_DMR.bed")
+up <- a[diff.Methy < 0]
+down <- a[diff.Methy > 0]
+
+# fwrite(a[,1:3],"7_DSS/bed/all_DMR.bed",col.names=F,sep="\t")
+# fwrite(up[,1:3],"7_DSS/bed/up_DMR.bed",col.names=F,sep="\t")
+# fwrite(down[,1:3],"7_DSS/bed/down_DMR.bed",col.names=F,sep="\t")
+
+# multiple files
+# setwd("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/group")
+# files=list.files("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/group")
+# mypeaks <- list()
+# for (i in files){
+#   peak<- readPeakFile(i)
+#   mypeaks <- c(mypeaks,peak)
+# }
+
+mypeaks <- readPeakFile("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/group/down_DMR")
+
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+promoter <- getPromoters(TxDb=txdb, upstream=5000, downstream=5000)
+
+options(ChIPseeker.ignore_1st_exon = T)
+options(ChIPseeker.ignore_1st_intron = T)
+options(ChIPseeker.ignore_promoter_subcategory = T)
+
+tagMatrixList <- getTagMatrix(mypeaks,windows = promoter)
+# tagMatrixList <- lapply(mypeaks, getTagMatrix, windows=promoter) # multiple group
+
+peakAnnoList <- annotatePeak(mypeaks,TxDb=txdb,tssRegion=c(-5000, 5000),verbose=FALSE,addFlankGeneInfo=TRUE, flankDistance=5000,annoDb = "org.Mm.eg.db")
+# peakAnnoList <- lapply(mypeaks, annotatePeak, TxDb=txdb,tssRegion=c(-5000, 5000), verbose=FALSE,addFlankGeneInfo=TRUE, flankDistance=5000,annoDb = "org.Mm.eg.db")
+plotAnnoBar(peakAnnoList)
+
+# write files
+# for (i in 1:3){
+#   a <-as.data.frame(peakAnnoList[i])
+#   colnames(a)[6:11]<-c("width","strand","length","nCG","meanMethy1","meanMethy2","diff.Methy","areaStat")
+#   write.table(
+#     a,
+#     paste0(names(peakAnnoList)[i],".tsv"),
+#     sep="\t",
+#     row.names = F,
+#     quote = F)
+# }
+
+```
+
+## 3.3 Barplot of KEGG in down DMR
+```{r,message=FALSE,warning=FALSE}
+library(enrichR)
+#down DMR region with annotation See in Supplementary Table S2
+peaks<- as.data.frame(fread("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/DMR_anno.tsv"))
+loss <- peaks [which(peaks$diff.Methy>0 & peaks$annotation=="Promoter (<=1kb)" ),"SYMBOL"]
+
+g=loss
+dbs <- c("KEGG_2019_Mouse")
+kegg <- enrichr(g, dbs)
+kegg <- as.data.frame(kegg)
+
+kegg <- kegg[kegg$KEGG_2019_Mouse.P.value<=0.05,]
+# fwrite(kegg,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/3_DMR_430_genes_KEGG.csv")
+
+tf <- kegg[,c(1,3)]
+
+colnames(tf) <- c("GO terms","P-value")
+
+tf <- tf[as.numeric(tf$`P-value`)<=0.05,]
+tf$`P-value` <- -log10(as.numeric(tf$`P-value`))
+rownames(tf) <- tf$`GO terms`
+tf <- tf[1:9,]
+tf <- tf[order(as.numeric(tf$`P-value`)),]
+
+barplot(as.numeric(tf$`P-value`),horiz=T,xlim=c(0,max(tf$`P-value`)+0.5),axes=T,col=rgb(171,205,233, maxColorValue = 255),xlab ="-log10(p-value)",
+        cex.axis=1.3,cex.lab=1.5,border = NA) 
+for (i in 1:nrow(tf)){
+  text(0,(1.2*i-0.6),tf$`GO terms`[i],cex=1.6,pos=4)
+}
+```
+
+## 3.4 Methylation signal heatmap of DMR 
+```{r,message=FALSE,warning=FALSE}
+# library(data.table)
+# library(readxl)
+# library(EnrichedHeatmap)
+# library(tidyverse)
+# library(rtracklayer)
+# library(ggplot2)
+# library(RColorBrewer)
+# library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+# library(cowplot)
+# library(ggsci)
+# library(clusterProfiler)
+# blues <- colorRampPalette(colors = brewer.pal(9,"Blues"))
+# 
+# ####-------- type transfer------
+# a <- fread("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/down_methy_gene.csv")
+# 
+# tt <- bitr(a$`gene name` ,fromType = 'SYMBOL',
+#            toType = c('ENTREZID'),
+#            OrgDb='org.Mm.eg.db')
+# colnames(tt)[1] <- "gene"
+# 
+# 
+# ####------- DMR ranger----------
+# a <- fread("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/7_DSS/1_DMR_down.bed")
+# 
+# t <- GRanges(seqnames = a$V1,
+#              ranges = IRanges(start = a$V2,end=a$V3))
+# target.tss <- t
+# 
+# ####--------- methylation----------------------
+# setwd("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/bigwig/methy_bedgraph")
+# 
+# a <- c("CON_CpG.bedGraph","DAC_CpG.bedGraph")
+# 
+# result <- list()
+# result_ht <- c()
+# names <- c("Ctrl","DAC")
+# j=1
+# 
+# # long time
+# for (i in a){
+#   #i="CON_CpG.bedGraph"
+#   ICM_ATAC <- import.bedGraph(i)
+#   mat.ATAC.tss <- normalizeToMatrix(signal = ICM_ATAC,
+#                                     target=target.tss,
+#                                     extend = 500,
+#                                     w = 50,
+#                                     value_column = "score",
+#                                     keep = c(0,0.95),
+#                                     background = NA
+#   )
+#   print(i)
+#   
+#   dim(mat.ATAC.tss)
+#   t <-  as.data.frame(rownames(mat.ATAC.tss))
+#   
+#   ht1 <- EnrichedHeatmap(mat.ATAC.tss,
+#                          col = blues(10),
+#                          name = paste0(names[j]),
+#                          axis_name = c("-500bp","start","end","500bp"),
+#                          column_title = names[j], 
+#                          top_annotation = HeatmapAnnotation(lines = anno_enriched(gp = gpar(col = colors(9)),
+#                          ylim=c(0,80)
+#                          )),
+#                          row_title_rot = 0,
+#                          use_raster=F,
+#   )
+#   ht1
+#   result_ht <- result_ht+ht1
+#   j=j+1
+# }
+# 
+# result_ht
+
+```
+
+## 3.5 Boxplot+vlnplot Methy level
+
+```{r,message=FALSE,warning=FALSE}
+####----- TSS position---------------------
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
+# mm10.g <- genes(TxDb.Mmusculus.UCSC.mm10.knownGene)
+# mm10.g.data <- data.frame(mm10.g)
+# head(mm10.g.data)
+# 
+# mm10.tss <- promoters(mm10.g,upstream = 1000,downstream = 1000)
+# mm10.tss <- as.data.frame(mm10.tss)
+# colnames(mm10.tss)[6] <- "ENTREZID"
+# 
+# t <- mm10.tss$ENTREZID
+# tt <- bitr(t,fromType = 'ENTREZID',
+#            toType = c('SYMBOL'),
+#            OrgDb='org.Mm.eg.db')
+# 
+# m <- merge(mm10.tss,tt,by="ENTREZID")
+# 
+# fwrite(m,"/home/liyaru/public_Data/mm10_TSS_1kb_Txdb.csv")
+# 
+# m <- m[,c(2:4,7,1)]
+# fwrite(m,"/home/liyaru/public_Data/mm10_TSS_1kb_Txdb.bed",col.names = F,sep="\t")
+
+###-----6.5.2 DAC CpG in promoter---------------------
+# peak.dt <- fread("/home/liyaru/public_Data/mm10_TSS_1kb_Txdb.csv")
+# summary(peak.dt) 
+# table(peak.dt$seqnames)
+# colnames(peak.dt)[2] <- "chrom"
+# 
+# methyl.dt <- fread("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/4_MethylDackel/DAC_CpG.bedGraph", 
+#                    skip=1, header=FALSE, 
+#                    col.names=c("chrom", "start", "end", "methyl.pct", "methyl.read.count", "unmethyl.read.count"))
+# methyl.dt[1:5,1:5]
+# 
+# chroms.vector <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10",
+#                    "chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chrX","chrY")
+# 
+# all.peaks.dt.list <- lapply(chroms.vector, FUN=function(temp.chrom){
+#   temp.peak.dt <- peak.dt[chrom==temp.chrom]
+#   temp.methyl.dt <- methyl.dt[chrom==temp.chrom]
+#   aa=temp.methyl.dt[, {
+#     index <- .I
+#     if ((index+1) %% 10000 == 0){
+#       cat(date(), " : processing index", index, "\n")
+#     }
+#     temp.peak.dt[CpG.start>= start & CpG.end <=end][,'ENTREZID']
+#   },  list(chrom, CpG.start=start, CpG.end=end,methyl.pct,methyl.read.count,unmethyl.read.count)]
+# })
+# 
+# result <- rbindlist(all.peaks.dt.list)
+# result[1:5]
+# fwrite(result,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/10_mehty/1_DAC_promoter.bed",sep = "\t")
+
+###-----6.5.3 Ctrl CpG in promoter---------------------
+# peak.dt <- fread("/home/liyaru/public_Data/mm10_TSS_1kb_Txdb.csv")
+# summary(peak.dt) 
+# table(peak.dt$seqnames)
+# colnames(peak.dt)[2] <- "chrom"
+# 
+# 
+# methyl.dt <- fread("/media/liyaru/LYR/301project/1_MOUSE_T_Chi_DAC/methy_result/4_MethylDackel/CON_CpG.bedGraph", 
+#                    skip=1, header=FALSE, 
+#                    col.names=c("chrom", "start", "end", "methyl.pct", "methyl.read.count", "unmethyl.read.count"))
+# methyl.dt[1:5,1:5]
+# summary(methyl.dt)
+# chroms.vector <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10",
+#                    "chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chrX","chrY")
+# all.peaks.dt.list <- lapply(chroms.vector, FUN=function(temp.chrom){
+#   temp.peak.dt <- peak.dt[chrom==temp.chrom]
+#   temp.methyl.dt <- methyl.dt[chrom==temp.chrom]
+#   aa=temp.methyl.dt[, {
+#     index <- .I
+#     if ((index+1) %% 10000 == 0){
+#       cat(date(), " : processing index", index, "\n")
+#     }
+#     temp.peak.dt[CpG.start>= start & CpG.end <=end][,'ENTREZID']
+#   },  list(chrom, CpG.start=start, CpG.end=end,methyl.pct,methyl.read.count,unmethyl.read.count)]
+# })
+# 
+# result <- rbindlist(all.peaks.dt.list)
+# result[1:5]
+# fwrite(result,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/10_mehty/1_CON_promoter.bed",sep = "\t")
+
+
+###------ Promoter CpG boxplot-----------------------
+# merge
+con <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/10_mehty/1_CON_promoter.bed")
+con$class <- 'Ctrl'
+dac <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/10_mehty/1_DAC_promoter.bed")
+dac$class <- 'DAC'
+
+result <- rbind(con,dac)
+table(result$class)
+
+P <- ggplot(result,aes(class,`methyl.pct`))+
+  geom_violin(aes(fill=class),cex=1.2)+  
+  scale_fill_manual(values = color_4_sample[1:2])+
+  geom_boxplot(width=0.1,cex=1.2)+
+  theme_classic(base_size = 20)+
+  theme(axis.text = element_text(color = 'black'),
+        legend.position = 'none')+
+  stat_compare_means(aes(group=class),
+                     ref="Ctrl",
+                     method = "wilcox.test",
+                     paired=F,
+                     label = "p.signif")
+
+P
+```
+
+
+# 4 scRNA-seq in vivo 
+## 4.0 Data
+```{r,warning=FALSE}
+CD8 <- readRDS("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/RDS/new/CD8_C0-6.rds")
+DimPlot(CD8)
+```
+
+## 4.1 TSNE
+```{r,message=FALSE,warning=FALSE}
+DimPlot(CD8,reduction = "tsne",group.by = "RNA_snn_res.0.5",pt.size = 2,
+        cols = color1,
+        #label = T,
+        label.size = 8)
+
+DimPlot(CD8,reduction = "tsne",group.by = "RNA_snn_res.0.5",pt.size = 2,
+        split.by = "orig.ident",
+        cols = color1,
+        #label = T,
+        label.size = 8)
+```
+
+## 4.2 Dotplot 
+```{r,message=FALSE,warning=FALSE}
+n=length(unique(CD8@meta.data$RNA_snn_res.0.5))
+celltype=data.frame(ClusterID=0:(n-1),
+                    celltype='unkown')
+celltype[celltype$ClusterID %in% c(0),2]='Exp - c0'
+celltype[celltype$ClusterID %in% c(1),2]='Ex - c1'
+celltype[celltype$ClusterID %in% c(2),2]='Ex prolif. - c2'
+celltype[celltype$ClusterID %in% c(3),2]='Em prolif. - c3'
+celltype[celltype$ClusterID %in% c(4),2]='Ex - c4' 
+celltype[celltype$ClusterID %in% c(5),2]='Active - c5' 
+celltype[celltype$ClusterID %in% c(6),2]='Naive - c6'
+
+
+CD8@meta.data$celltype = "unknown"
+for(i in 1:nrow(celltype)){
+  CD8@meta.data[which(CD8@meta.data$RNA_snn_res.0.5 == celltype$ClusterID[i]),'celltype'] <- celltype$celltype[i]}
+table(CD8@meta.data$celltype)
+
+mylevel <- c(
+  'Naive - c6','Active - c5','Em prolif. - c3','Exp - c0','Ex prolif. - c2','Ex - c1','Ex - c4' 
+)
+CD8@meta.data$celltype <- factor(CD8@meta.data$celltype,levels=mylevel)
+
+DotPlot(CD8,
+        features=c(
+          "Pdcd1","Havcr2","Tigit",
+          "Nkg7",
+          "Gzmb","Gzmk","Mki67","Tcf7","Lef1","Il7r",
+          "Tox","Nr4a2"),
+        group.by = "celltype",
+        scale = T)+
+  RotatedAxis()& 
+  scale_color_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))
+
+```
+
+## 4.3 Ratio
+```{r,message=FALSE,warning=FALSE}
+m <- CD8@meta.data
+m$orig.ident <- factor(m$orig.ident,levels = c("Con","DAC","PD1","DP"))
+m$number=1
+
+ggplot(m,aes(orig.ident,number,fill=RNA_snn_res.0.5))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 16)+
+  scale_fill_manual(
+    values = color1
+  )
+
+
+m <- ddply(m,'orig.ident',transform,percent = 1/sum(number)*100)
+
+ggplot(m,aes(orig.ident,percent,fill=RNA_snn_res.0.5))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 20)+
+  scale_fill_manual(values = color1)
+
+```
+
+## 4.4 Featureplot
+```{r,message=FALSE,warning=FALSE}
+FeaturePlot(CD8,features=c("Cd3d","Cd3e",
+                           "Cd8a","Cd8b1",
+                           "Cd4",
+                           "Pdcd1","Havcr2",
+                           "Tigit", "Nr4a2",
+                           "Nkg7","Gzmb","Gzmk","Mki67",
+                           "Tcf7","Lef1",
+                           "Il7r"),
+            pt.size = 0.5,
+            ncol = 4)& 
+  scale_color_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))
+```
+
+## 4.5 Vlnplot
+```{r,message=FALSE,warning=FALSE}
+VlnPlot(CD8,features = c("nFeature_RNA"),pt.size=0,
+        group.by = "sample")+
+  scale_fill_manual(values = color_4_sample)
+VlnPlot(CD8,features = c( "nCount_RNA"),pt.size=0,
+        group.by = "sample")+
+  scale_fill_manual(values = color_4_sample)
+VlnPlot(CD8,features = c( "percent.mt"),pt.size=0,
+        group.by = "sample")+
+  scale_fill_manual(values = color_4_sample)
+```
+
+## 4.6 cellcycle 
+```{r,message=FALSE,warning=FALSE}
+g2m.genes<-c("Hmgb2","Cdk1","Nusap1","Ube2c","Birc5","Tpx2","Top2a","Ndc80","Cks2","Nuf2",
+             "Cks1b","Mki67","Tmpo","Cenpf","Tacc3","Fam64a","Smc4","Ccnb2","Ckap2l","Ckap2",
+             "Aurkb","Bub1","Kif11","Anp32e","Tubb4b","Gtse1","Kif20b","Hjurp","Cdca3","Hn1",
+             "Cdc20","Ttk","Cdc25c","Kif2c","Rangap1","Ncapd2","Dlgap5","Cdca2","Cdca8",
+             "Ect2","Kif23","Hmmr","Aurka","Psrc1","Anln","Lbr","Ckap5","Cenpe","Ctcf","Nek2",
+             "G2e3","Gas2l3","Cbx5","Cenpa")
+s.genes<-c("Mcm5","Pcna","Tyms","Fen1","Mcm2","Mcm4","Rrm1","Ung","Gins2","Mcm6","Cdca7","Dtl",
+           "Prim1","Uhrf1","Mlf1ip","Hells","Rfc2","Rpa2","Nasp","Rad51ap1","Gmnn","Wdr76",
+           "Slbp","Ccne2","Ubr7","Pold3","Msh2","Atad2","Rad51","Rrm2","Cdc45","Cdc6","Exo1",
+           "Tipin","Dscc1","Blm","Casp8ap2","Usp1","Clspn","Pola1","Chaf1b","Brip1","E2f8")
+
+CD8 <- CellCycleScoring(CD8, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+DimPlot(CD8,group.by = "Phase",
+        cols = color1[3:5],
+        pt.size = 1)
+DimPlot(CD8,group.by = "orig.ident",
+        cols = color_4_sample ,
+        pt.size = 1)
+
+```
+
+## 4.7 Monocle2 -- pusedotime
+### 4.7.1 Trajectory
+
+```{r,message=FALSE,warning=FALSE}
+####------- 1 monocle trjectory-------------
+library(monocle)
+
+# Idents(CD8) <- CD8$RNA_snn_res.0.5
+# CD8_2 <- subset(CD8,idents=c("0","1","2","4"))
+# 
+# expr <- GetAssayData(CD8_2,assay = "RNA",slot = "count")
+# gene_anno<-data.frame(gene_id=rownames(expr),gene_short_name=rownames(expr))
+# rownames(gene_anno) <- rownames(expr)
+# sample_sheet<- CD8_2@meta.data
+# 
+# pd <- new("AnnotatedDataFrame", data = sample_sheet)
+# fd <- new("AnnotatedDataFrame", data = gene_anno)
+# 
+# HSMM <- newCellDataSet(expr,
+#                        phenoData = pd,
+#                        featureData = fd,
+#                        expressionFamily=negbinomial.size())
+# 
+# HSMM <- estimateSizeFactors(HSMM)
+# HSMM <- estimateDispersions(HSMM)
+# 
+# disp_table <- dispersionTable(HSMM)
+# 
+# disp.genes <- subset(disp_table, mean_expression >= 0.1 & dispersion_empirical >= 1 * dispersion_fit)$gene_id
+# 
+# HSMM <- setOrderingFilter(HSMM, disp.genes)
+# plot_ordering_genes(HSMM)
+# 
+# HSMM <- reduceDimension(HSMM, max_components = 2,
+#                         method = 'DDRTree')
+# 
+# HSMM <- orderCells(HSMM)
+# saveRDS(HSMM,"/media/liyaru/LYR/301project/data/monocle.rds")
+
+HSMM <- readRDS("/media/liyaru/LYR/301project/data/monocle.rds")
+
+plot_cell_trajectory(HSMM, color_by = "RNA_snn_res.0.5",cell_size = 1,
+                     show_tree = T)+
+  scale_colour_manual(values = color1[c(1,2,3,5)])
+
+plot_cell_trajectory(HSMM, color_by = "RNA_snn_res.0.5",
+                     show_branch_points = F) + 
+  facet_wrap("~RNA_snn_res.0.5", nrow = 1)+
+  scale_colour_manual(values = color1[c(1,2,3,5)])
+
+plot_cell_trajectory(HSMM, color_by = "RNA_snn_res.0.5",
+                     show_branch_points = F) + 
+  facet_wrap("~orig.ident", nrow = 1)+
+  scale_colour_manual(values = color1[c(1,2,3,5)])
+
+plot_cell_trajectory(HSMM,color_by="Pseudotime", size=1,show_backbone=TRUE)& 
+  scale_color_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))
+```
+
+### 4.7.2 Expression
+```{r,message=FALSE,warning=FALSE}
+####-------- 2 monocle gene exp-------------
+markers <-c("Il7r","Tcf7","Lef1","Gzmk","Prf1","Cx3cr1","Gzmb","Havcr2","Pdcd1","Tox","Tigit")
+
+my_genes <- markers
+
+t <- HSMM@phenoData@data
+t <- t[t$RNA_snn_res.0.5 != "2",] 
+t <- rownames(t)
+
+#drop C2(proliferating)
+cds_subset <- HSMM[my_genes,t]
+
+#each gene in trajectory
+plot_genes_in_pseudotime(cds_subset, 
+                         color_by="RNA_snn_res.0.5",
+                         ncol=2)+
+  scale_colour_manual(values = color1[c(1,2,3,5)])
+
+
+plot_genes_in_pseudotime(cds_subset, 
+                         color_by="Pseudotime",
+                         ncol=2)& 
+  scale_color_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))
+
+
+#gene in pseudotime heatmap
+plot_pseudotime_heatmap(cds_subset,
+                        show_rownames = T,
+                        cluster_rows = F)
+```
+
+
+
+## 4.8 Destiny -- Diffusion map
+```{r,message=FALSE,warning=FALSE}
+# library(Seurat)
+# library(velocyto.R)
+# library(SeuratWrappers)
+# library(destiny)
+# library(rgl)
+# 
+# ct <-GetAssayData(CD8,assay = "RNA",slot = "data")
+# ct<-ct[VariableFeatures(CD8),]
+# ct <- as.ExpressionSet(as.data.frame(t(ct)))
+# 
+# #add annotation
+# ct$celltype <- CD8@meta.data[,c("RNA_snn_res.0.5")]
+# dm <- DiffusionMap(ct,k = 10)
+# dpt <- DPT(dm,tips=1)
+# #saveRDS(dm,"/media/liyaru/LYR/301project/data/destiny.rds")
+# #saveRDS(dpt,"/media/liyaru/LYR/301project/data/destiny_diffusion.map.rds")
+# 
+# 
+# gg <- TSNEPlot(CD8,group.by="RNA_snn_res.0.5",cols=color1)
+# gg
+# c <- ggplot_build(gg)$data[[1]]$colour
+# 
+# plot.DPT(dpt,col_by = "RNA_snn_res.0.5",col=c)
+# 
+# plot3d(
+#   eigenvectors(dm)[,1:3],
+#   col = c,
+#   size = 10,
+#   type = 'p'
+# )
+# 
+# ####-------- get embeddings from destiny -------------------
+# t <- CD8@reductions$tsne@cell.embeddings
+# tt <- as.data.frame(t)
+# 
+# t[,1] <- dm$DC1[rownames(tt)]
+# t[,2] <- dm$DC2[rownames(tt)]
+# 
+# CD8@reductions$tsne@cell.embeddings <- t
+# 
+# DimPlot(CD8,group.by = "RNA_snn_res.0.5",
+#         cols = color1,
+#         pt.size = 1)
+
+```
+
+## 4.9 velocyto -- RNA velocity
+```{r,message=FALSE,warning=FALSE}
+# library(velocyto.R)
+# 
+# ldat <- ReadVelocity(file = "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/RNA/Con-5-lib/velocyto/Con-5-lib.loom")
+# bm <- as.Seurat(x = ldat)
+# 
+# Idents(CD8) <-  CD8@meta.data$orig.ident
+# Ctrl <- subset(CD8,idents="Con")
+# 
+# #barcode name 
+# a <- gsub("x","-1_1",colnames(bm$spliced))
+# a <- gsub("Con-5-lib:","",a)
+# 
+# ttt <- bm@assays$spliced
+# colnames(ttt)
+# colnames(ttt@counts) <- a
+# colnames(ttt@data) <- a
+# bm@assays$spliced <- ttt
+# 
+# ttt <- bm@assays$unspliced
+# colnames(ttt)
+# colnames(ttt@counts) <- a
+# colnames(ttt@data) <- a
+# bm@assays$unspliced <- ttt
+# 
+# ttt <- bm@assays$ambiguous
+# colnames(ttt)
+# colnames(ttt@counts) <- a
+# colnames(ttt@data) <- a
+# bm@assays$ambiguous<- ttt
+# 
+# # filter cell (use same cell in seurat)
+# rownames(bm@meta.data) <- gsub("x","-1_1",rownames(bm@meta.data))
+# rownames(bm@meta.data) <- gsub("Con-5-lib:","",rownames(bm@meta.data))
+# 
+# sp <- bm$spliced[,rownames(Ctrl@meta.data)]
+# unsp <- bm$unspliced[,rownames(Ctrl@meta.data)]
+# WTumap <- Ctrl@reductions$tsne@cell.embeddings
+# 
+# cell.dist <- as.dist(1-armaCor(t(WTumap)))
+# fit.quantile <- 0.02
+# 
+# rvel.cd <- gene.relative.velocity.estimates(sp,unsp,deltaT=2,kCells=10,
+#                                             cell.dist=cell.dist,fit.quantile=fit.quantile,
+#                                             n.cores=10)
+# 
+# gg <- TSNEPlot(Ctrl,group.by="RNA_snn_res.0.5",label=T,label.size=10,cols=color1)
+# gg
+# ggplot_build(gg)$data
+# colors <- as.list(ggplot_build(gg)$data[[1]]$colour)
+# names(colors) <- rownames(WTumap)
+# 
+# show.velocity.on.embedding.cor(WTumap,
+#                                rvel.cd,
+#                                n=100,
+#                                scale='sqrt',
+#                                cell.colors=ac(colors,alpha=0.5),
+#                                cex=1.2,
+#                                arrow.scale=0.08,
+#                                show.grid.flow=TRUE,
+#                                min.grid.cell.mass=0.5,
+#                                grid.n=20,
+#                                arrow.lwd=1,
+#                                do.par=F,cell.border.alpha = 0.1)
+# 
+# # saveRDS(bm,"/media/liyaru/LYR/301project/data/velocyto.rds")
+```
+
+## 4.10  DEG
+```{r,message=FALSE,warning=FALSE}
+# CD8@meta.data$cluster_sample <- paste0(CD8@meta.data$RNA_snn_res.0.5,"_",CD8@meta.data$orig.ident)
+# table(CD8$cluster_sample)
+# DefaultAssay(CD8) <- "RNA"
+# 
+# #DP VS P DEG
+# CD8.markers <- FindMarkers(CD8,
+#                            group.by = "cluster_sample",
+#                            ident.1 = "0_DP",
+#                            ident.2 ="0_PD1",
+#                            #test.use = "MAST"
+#                            logfc.threshold=0)
+# fwrite(CD8.markers,
+#        "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C0.DP_PD1.csv",
+#        row.names =T )
+```
+
+### 4.10.1 volcano
+```{r,message=FALSE,warning=FALSE}
+library(ggplot2)
+library(ggrepel)
+library(org.Mm.eg.db)
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C0.DP_PD1.csv")
+
+target <- c("Jund","Eif3f","H2afj","Tomm20","Ube2s","Pgls","Ets1","Eif5","Xbp1","Grina","Dusp2")
+
+Dat<- as.data.frame(a)
+Dat$gene <- Dat$V1
+
+Dat$threshold <- 'Other'
+Dat[Dat$p_val < 0.05 & Dat$avg_log2FC > 0,'threshold'] <- 'Up'
+Dat[Dat$gene %in% target,'threshold'] <- 'Label'
+Dat[Dat$p_val < 0.05 & Dat$avg_log2FC < 0,'threshold'] <- 'Down'
+table(Dat$threshold)
+
+Dat$threshold <- factor(Dat$threshold,levels = c('Up','Down','Label','Other'))
+
+ggplot(Dat,aes(x=avg_log2FC,y=-log10(p_val),color=threshold))+
+  geom_point()+
+  #scale_color_manual(values=c("#DC143C","#00008B",'black',"#808080"))+
+  #scale_color_manual(values=c( "#FB6A4A","#67000D","#9ECAE1","#08519C","#808080"))+
+  #scale_color_manual(values=c(  "#EEBBBB","#CD3333","#AAAAD4", "#000080","#808080"))+
+  scale_color_manual(values=c(  "#EEBBBB","#AAAAD4", "#CD3333","#808080"))+
+  geom_text_repel(
+    #data = Dat[(Dat$p_val_adj<0.05 & abs(Dat$avg_log2FC) > fc1)| Dat$V1 %in% c("Jund","Jun") ,],
+    #data = Dat[(Dat$p_val_adj<0.05 & abs(Dat$avg_log2FC) > fc),],
+    data = Dat[Dat$gene %in% target,],
+    aes(label = gene),
+    size = 5,
+    segment.color = "black", show.legend = FALSE,
+    max.overlaps=40)+
+  theme_bw()+
+  theme(
+    legend.title = element_blank(),
+    #text = element_text(family="Arial",size = 17),
+    text = element_text(size = 17),
+    # axis.title.x= element_text(size=14 , family="Arial"),
+    # axis.title.y = element_text(size = 14, family="Arial"),
+    # axis.text = element_text(size = 14, family="Arial")
+  )+
+  ylab('-log10 (p-value)')+
+  xlab('log2 (FoldChange)')+
+  geom_hline(yintercept = -log10(0.05),lty=3,col="black",lwd=0.5)
+
+```
+
+### 4.10.2 GO
+```{r,message=FALSE,warning=FALSE}
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C0.DP_PD1_0.05.csv")
+a <- a[a$avg_log2FC > 0]
+
+ego <- enrichGO(
+  gene          = a$V1,
+  keyType       = "SYMBOL",
+  OrgDb         =  org.Mm.eg.db,
+  ont           = "ALL",
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.05,
+  #readable      = TRUE
+)
+
+terms <-c ("T cell differentiation",
+           "ribonucleoprotein complex biogenesis",
+           "protein folding",
+           "cellular response to chemical stress",
+           "regulation of T cell activation",
+           "nuclear transport",
+           "regulation of immune effector process",
+           "regulation of adaptive immune response",
+           "regulation of DNA metabolic process",
+           "protein polyubiquitination",
+           "regulation of mRNA metabolic process",
+           "T cell proliferation",
+           "cell killing",
+           "mitochondrion organization"
+)
+
+t <- ego@result
+#fwrite(t,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/11.C0.DP.GO.csv",row.names = T)
+t <- t[t$Description %in% terms,]
+t <- t[as.numeric(t$pvalue)<=0.05,]
+t$`P-value` <- -log10(as.numeric(t$p.adjust))
+rownames(t) <- t$Description
+t <- t[order(as.numeric(t$`P-value` )),]
+
+barplot(as.numeric(t$`P-value`),
+        horiz=T,
+        xlim=c(0,max(t$`P-value`)+0.5),
+        axes=T,
+        #col="lightblue",
+        col = "#EEBBBB",
+        xlab ="-log10(p.adjust)",
+        cex.axis=1.3,cex.lab=1,border = NA) 
+for (i in 1:nrow(t)){
+  text(0,(1.2*i-0.6),t$Description[i],cex=1.2,pos=4)
+}
+
+```
+
+## 4.11 Heatmap
+```{r,message=FALSE,warning=FALSE}
+library(pheatmap)
+library(RColorBrewer)
+
+DefaultAssay(CD8) <- "RNA"
+CD8@meta.data$cluster_sample <- paste0(CD8@meta.data$RNA_snn_res.0.5,"_",CD8@meta.data$orig.ident)
+a<-AverageExpression(CD8,group.by = "cluster_sample",slot = "data")
+a <- a[["RNA"]]
+
+t <-as.data.frame(fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C0.DP_PD1.csv"))  
+up <- t[t$avg_log2FC > 0 & t$p_val < 0.05,'V1']
+aa <- a[up,]
+colnames(aa)
+aa <- aa[,c("0_Con","0_PD1","0_DP","0_DAC")]
+
+# show genes
+genes <- c("NFATC3","MAPK1","SOCS1","IFNG",
+           "JAK1","AKT2","RUNX2","RUNX3","ZBTB1",
+           "MAP2K","UBE2B","IL7R","MEF2D","IKZF1",
+           "NFKB1","NFKB2","PRF1","GZMK",
+           "GZMA","GZMB","JUND","ETS1","CD47",
+           "Fyn",
+           "Eif5","Eif3b","Mapkapk3",
+           "Xbp1","Atp1b3","Atp5md","Cox7c","Tomm7",
+           "Ndufa3",
+           "Arf5",
+           "Tomm20","Cox5a","Pak2","Arf6")
+genes <- genes %>%
+  tolower() %>%
+  Hmisc::capitalize()
+
+
+t <- t(scale(t(aa)))
+
+p1 <- pheatmap(t,
+               border_color=NA,
+               color = rdwhbu(100),
+               #scale = "row",
+               #cutree_rows = N,
+               cluster_row = T,
+               cluster_col = F,
+               show_rownames=T,
+               show_colnames=T,
+               clustering_distance_rows = "euclidean",
+               clustering_method='complete',
+               #breaks = breaksList,
+               #annotation_row=annotation_row,
+               #annotation_colors=ann_colors
+)
+
+
+
+```
+
+### 4.11.1 Add cluster
+```{r,message=FALSE,warning=FALSE}
+d = dist(t, method = 'euclidean')
+tree = hclust(d, method = 'complete')
+
+N=7
+v = cutree(tree, N)[tree$order]
+gaps = which((v[-1] - v[-length(v)]) != 0)
+
+gene.cluster <- as.data.frame(v)
+gene.cluster$gene <- rownames(gene.cluster)
+table(gene.cluster$v)
+
+{
+  annotation_row <- data.frame(Cut = gene.cluster$v,
+                               gene = rownames(gene.cluster)
+  )
+  
+  rownames(annotation_row) <- annotation_row$gene
+  
+  annotation_row[annotation_row$Cut == "2",'Module'] = 'G1'
+  annotation_row[annotation_row$Cut == "7",'Module'] = 'G2'
+  annotation_row[annotation_row$Cut == "6",'Module'] = 'G3'
+  annotation_row[annotation_row$Cut == "4",'Module'] = 'G4'
+  annotation_row[annotation_row$Cut == "3",'Module'] = 'G5'
+  annotation_row[annotation_row$Cut == "5",'Module'] = 'G6'
+  annotation_row[annotation_row$Cut == "1",'Module'] = 'G7'
+}
+
+annotation_row <- annotation_row[,c(2:3)]
+annotation_row[!(annotation_row$gene %in% genes),'gene']=""
+annotation_row$gene <- factor(annotation_row$gene,levels = c(unique(annotation_row$gene),NA))
+
+c1 <- brewer.pal(N, "Set2")
+names(c1) <- unique(annotation_row$Module)
+
+colnames(annotation_row)
+
+ann_colors = list(
+  Module = c1)
+
+pheatmap(t[,c(1,4,2,3)],
+               border_color=NA,
+               color = rdwhbu(100),
+               #scale = "row",
+               cutree_rows = N,
+               cluster_row = T,
+               cluster_col = F,
+               show_rownames=F,
+               show_colnames=T,
+               clustering_distance_rows = "euclidean",clustering_method='complete',
+               #breaks = breaksList,
+               annotation_row=annotation_row,
+               annotation_colors=ann_colors
+)
+
+
+colnames(annotation_row)[1] <- "Labeled" 
+annotation_row$gene <- rownames(annotation_row)
+# fwrite(annotation_row,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/13.up.DEG.Module.csv")
+
+DEG <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/4_C0.DP_PD1_up.xlsx")
+m <- merge(DEG,annotation_row,by="gene",all.x=T,all.y=T)
+m <- m[order(m$Module),]
+# fwrite(m,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/13.up.DEG.Module.FC.P.all.csv")
+
+```
+
+## 4.12 GO of multiple cluster
+
+### 4.12.1 GO
+```{r,message=FALSE,warning=FALSE}
+# a <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/13.up.DEG.Module.FC.P.all.xlsx")
+# table(a$Module)
+# target <- NULL
+# for(i in unique(a$Module)){
+#   #i=="G1"
+#   ii <- a[a$Module==i,]
+#   ii <- ii$gene
+#   target <- c(target,list(ii))
+# }
+# names(target) <- paste0("Module",1:7)
+# 
+# #GO for each module
+# for (i in c(1:7)){
+#   ii=target[[i]]  
+#   ego <- enrichGO(
+#     gene          = ii,
+#     keyType       = "SYMBOL",
+#     OrgDb         =  org.Mm.eg.db,
+#     ont           = "ALL",
+#     pAdjustMethod = "BH",
+#     pvalueCutoff  = 0.05,
+#     qvalueCutoff  = 0.05,
+#     #readable      = TRUE
+#   )
+#   
+#   kegg <- ego@result
+#   
+#   fwrite(kegg,paste0("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG/Cut",i,".GO.csv"))
+#   
+#   pdf(paste0("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG/Cut",i,".GO.pdf"))
+#   
+#   { # barplot
+#     tf <- kegg[,c(3,6)]
+#     colnames(tf) <- c("GO terms","P-value")
+#     tf <- tf[as.numeric(tf$`P-value`)<=0.05,]
+#     tf$`P-value` <- -log10(as.numeric(tf$`P-value`))
+#     rownames(tf) <- tf$`GO terms`
+#     tf <- tf[1:10,]
+#     
+#     tf <- tf[order(as.numeric(tf$`P-value`)),]
+#     
+#     p <- barplot(as.numeric(tf$`P-value`),horiz=T,xlim=c(0,max(tf$`P-value`)+0.5),axes=T,
+#                  col=color7[i],
+#                  xlab ="-log10(p-value)",
+#                  cex.axis=1.3,cex.lab=1.5,border = NA) 
+#     p
+#     for (iii in 1:nrow(tf)){
+#       p+text(0,(1.2*iii-0.6),tf$`GO terms`[iii],cex=1.6,pos=4)
+#     }
+#   }
+#   print(p)
+#   dev.off()
+#   
+# }
+
+```
+
+### 4.12.2 Dotplot of GO
+```{r,message=FALSE,warning=FALSE}
+#dotplot each module of selected GO terms
+setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG")
+a <- list.files("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG",pattern="GO.csv")
+a
+result <- as.data.frame(matrix(nrow = 0,ncol = 11))
+for (i in 1:7){
+  #i=1
+  file <- paste0("Cut",i,".GO.csv")
+  t <- as.data.frame(fread(file))
+  t$Module <- i
+  result <- rbind(result,t)
+}
+table(result$Module)
+
+term <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/5_selected_GO.csv")
+
+term[term$Cut == "2",'Module'] = 'G1'
+term[term$Cut == "7",'Module'] = 'G2'
+term[term$Cut == "6",'Module'] = 'G3'
+term[term$Cut == "4",'Module'] = 'G4'
+term[term$Cut == "3",'Module'] = 'G5'
+term[term$Cut == "5",'Module'] = 'G6'
+term[term$Cut == "1",'Module'] = 'G7'
+
+term <- term[order(term$Module,term$p.adjust),]
+term <- term$Description
+
+result <- result[result$Description %in% term,]
+result$Module <- paste0("G",result$Module)
+
+result <- separate(result,col = GeneRatio,into = c("R1","R2"),sep = "[/]",remove = F)
+result$Ratio <- as.numeric(result$R1) / as.numeric(result$R2)
+
+result$Description <- factor(result$Description,levels = term[length(term):1])
+
+ggplot(result,aes(x = Module,y = Description))+
+  geom_point(aes(
+    #color = pvalue,
+    color=p.adjust,
+    size=Ratio))+
+  scale_size()+
+  scale_color_gradientn(colors = c(rdwhbu_re(100)[1:45],rdwhbu_re(100)[55:100]))+
+  theme_bw()
+```
+
+## 4.13 KEGG of multiple cluster
+
+### 4.13.1 KEGG
+```{r,message=FALSE,warning=FALSE}
+# a <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/13.up.DEG.Module.FC.P.all.xlsx")
+# table(a$Module)
+# target <- NULL
+# for(i in unique(a$Module)){
+#   #i=="G1"
+#   ii <- a[a$Module==i,]
+#   ii <- ii$gene
+#   target <- c(target,list(ii))
+# }
+# names(target) <- paste0("Module",1:7)
+# 
+# # each module KEGG
+# dbs <- c("KEGG_2019_Mouse")
+# color7 <- brewer.pal(7, "Set2")
+# color7 <- c("#E5C494","#66C2A5","#A6D854","#E78AC3","#FFD92F","#8DA0CB","#FC8D62")
+# show_col(color7)
+# 
+# for (i in c(1:7)){
+#   #i=1
+#   ii=target[[i]]
+#   
+#   #KEGG
+#   kegg <- enrichr(ii, dbs)
+#   kegg <- as.data.frame(kegg)
+#   kegg <- kegg[kegg$KEGG_2019_Mouse.P.value<=0.05,]
+#   
+#   fwrite(kegg,paste0("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG/Cut",i,".KEGG.csv"))
+#   
+#   pdf(paste0("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG/Cut",i,".KEGG.pdf"))
+#   
+#   { # barplot
+#     tf <- kegg[,c(1,3)]
+#     colnames(tf) <- c("GO terms","P-value")
+#     tf <- tf[as.numeric(tf$`P-value`)<=0.05,]
+#     tf$`P-value` <- -log10(as.numeric(tf$`P-value`))
+#     rownames(tf) <- tf$`GO terms`
+#     tf <- tf[1:10,]
+#     
+#     tf <- tf[order(as.numeric(tf$`P-value`)),]
+#     
+#     p <- barplot(as.numeric(tf$`P-value`),horiz=T,xlim=c(0,max(tf$`P-value`)+0.5),axes=T,
+#                  col=color7[i],
+#                  xlab ="-log10(p-value)",
+#                  cex.axis=1.3,cex.lab=1.5,border = NA) 
+#     p
+#     for (iii in 1:nrow(tf)){
+#       p+text(0,(1.2*iii-0.6),tf$`GO terms`[iii],cex=1.6,pos=4)
+#     }
+#   }
+#   print(p)
+#   dev.off()
+# } 
+```
+
+### 4.13.2 Dotplot
+```{r,message=FALSE,warning=FALSE}
+#dotplot KEGG selected term in each module
+setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG")
+a <- list.files("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF/DEG/KEGG",pattern="KEGG.csv")
+a
+result <- as.data.frame(matrix(nrow = 0,ncol = 10))
+for (i in 1:7){
+  #i=1
+  file <- paste0("Cut",i,".KEGG.csv")
+  t <- as.data.frame(fread(file))
+  t$Module <- i
+  result <- rbind(result,t)
+}
+table(result$Module)
+colnames(result) <- gsub("KEGG_2019_Mouse[.]","",colnames(result))
+
+term <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/5_selected_KEGG.xlsx") %>% as.data.frame(term)
+
+term[term$Cut == "2",'Module'] = 'G1'
+term[term$Cut == "7",'Module'] = 'G2'
+term[term$Cut == "6",'Module'] = 'G3'
+term[term$Cut == "4",'Module'] = 'G4'
+term[term$Cut == "3",'Module'] = 'G5'
+term[term$Cut == "5",'Module'] = 'G6'
+term[term$Cut == "1",'Module'] = 'G7'
+
+term <- term[order(term$Module,term$KEGG_2019_Mouse.Adjusted.P.value),]
+term <- term$KEGG_2019_Mouse.Term
+
+result <- result[result$Term %in% term,]
+result <- result[result$Adjusted.P.value < 0.05,]
+result$Module <- paste0("G",result$Module)
+
+result$Term <- factor(result$Term,levels = unique(term[length(term):1]))
+
+ggplot(result,aes(x = Module,y = Term))+
+  geom_point(aes(
+    color=Adjusted.P.value,
+    size=Odds.Ratio))+
+  scale_size()+
+  scale_color_gradientn(colors = c(rdwhbu_re(100)[1:45],rdwhbu_re(100)[55:100]))+
+  theme_bw()
+```
+
+## 4.14 Gene list for metascape
+```{r,message=FALSE,warning=FALSE}
+library(tidyr)
+library(reshape2)
+
+#https://metascape.org/gp/index.html
+
+t <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/13.up.DEG.Module.FC.P.all.xlsx") %>% as.data.frame()
+t <- t[,c("gene","Module")]
+tt <- dcast(t,gene~Module,value.var = "gene")
+
+#output to metascape
+# fwrite(tt[,2:8],"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/Metascape/Module7.genelist.csv")
+```
+
+## 4.15 SCENIC -- regulatory network inferred from scRNA-seq
+```{r,message=FALSE,warning=FALSE}
+# ####---------20.1 SCENIC-----------------
+# library(SCENIC)
+# library(SCopeLoomR)
+# 
+# setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/6_SCENIC/")
+# pyScenicDir <- "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/6_SCENIC"
+# pyScenicLoomFile <- file.path(pyScenicDir, "CD8.SCENIC.loom")
+# 
+# cellClusters <- as.data.frame(CD8@meta.data$cluster_sample)
+# rownames(cellClusters) <- rownames(CD8@meta.data)
+# colnames(cellClusters) <- "celltype_sample"
+# 
+# selectedResolution <- "celltype_sample" # select resolution
+# cellsPerCluster <- split(rownames(cellClusters), cellClusters[,selectedResolution])
+# 
+# ###-------- 20.2 TF heatmap-----------
+# regulonActivity_byCellType <- sapply(cellsPerCluster,
+#                                      function(cells) rowMeans(getAUC(regulonAUC)[,cells]))
+# regulonActivity_byCellType_Scaled <- t(scale(t(regulonActivity_byCellType), center = T, scale=T))
+# 
+# 
+# options(repr.plot.width=8, repr.plot.height=10)
+# hm <- draw(ComplexHeatmap::Heatmap(regulonActivity_byCellType_Scaled, name="Regulon activity",
+#                                    row_names_gp=grid::gpar(fontsize=6))) # row font size
+# 
+# rownames(regulonActivity_byCellType)
+# 
+# TF <- c("Jun(+)","Junb(+)","Jund(+)",
+#         "Fos(+)","Fosb(+)","Fosl1(+)","Fosl2(+)",
+#         "Cux1(+)",#"Cux2(+)",
+#         "Runx1(+)","Runx2(+)",
+#         "Nfkb1(+)","Nfkb2(+)",
+#         "Ets1(+)","Hivep1(+)",
+#         "Xbp1(+)" ,"Irf4(+)",
+#         "Batf(+)",
+#         "Eomes(+)", "Tbx21(+)","Bach2(+)",
+#         "Lef1(+)")
+# 
+# samples <- c( "0_Con","0_DAC","0_PD1","0_DP",
+#               "1_Con","1_DAC","1_PD1","1_DP",
+#               "4_Con","4_DAC","4_PD1","4_DP")
+# 
+# pheatmap(regulonActivity_byCellType_Scaled[TF,samples],
+#          cluster_cols = F,
+#          color = rdwhbu(100))
+# 
+# t <- regulonActivity_byCellType_Scaled
+# fwrite(as.data.frame(t),"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/19.SCENIC.activity.scaled.csv",
+#        row.names = T)
+# 
+# t <- regulonActivity_byCellType
+# fwrite(as.data.frame(t),"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/19.SCENIC.activity.csv",
+#        row.names = T)
+# 
+# ###-------- 20.3 regulatory network-----------
+# loom <- open_loom(pyScenicLoomFile, mode="r")
+# # Read information from loom file:
+# regulons_incidMat <- get_regulons(loom, column.attr.name='Regulons')
+# SCENIC_TF <- rownames(regulons_incidMat)
+# 
+# rownames(regulons_incidMat)
+# tf <- c("Jund(+)")
+# 
+# t <- regulons_incidMat[tf,]
+# t <- as.data.frame(t)
+# t$gene <- rownames(t)
+# 
+# tt <- regulons$`Jund(+)`
+# 
+# t <- as.data.frame(tt)
+# colnames(t) <- "gene"
+# 
+# a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/6_SCENIC/adj.CD8.tsv")
+# head(a)
+# 
+# aa <- a[a$TF %in% c("Jund") & a$importance > 30,] #final use
+# 
+# tt <- intersect(aa$target,t$gene)
+# 
+# target <- aa[aa$target %in% tt,]
+# 
+# # DP vs P FC
+# a <- as.data.frame(fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C0.DP_PD1_0.05.csv"))  
+# a <- a[order(-a$avg_log2FC),]
+# colnames(a)[1] <- "gene" 
+# colnames(target)[2] <- "gene"
+# 
+# m <- merge(target,a,by="gene",all.x=T)
+# 
+# m <- m[,c(1:5)]
+# colnames(m) <- c("gene","TF","importance","p_val (DP vs P in progenitor Tex)","avg_log2FC (DP vs P in progenitor Tex)")
+# 
+# # P vs Ctrl FC
+# a <- as.data.frame(fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table/DEG/C0.PD1_Con.csv"))  
+# a <- a[order(a$avg_log2FC),]
+# colnames(a)[1] <- "gene" 
+# 
+# m <- merge(m,a[,c(1:3)],by="gene",all.x=T)
+# colnames(m)[6:7] <- c("p_val (P vs C in progenitor Tex)","avg_log2FC (P vs C in progenitor Tex)")
+# 
+# #fwrite(m,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table/network/JUND_target_importance30.csv")
+```
+
+## 4.16 Featureplot of JunD
+```{r,message=FALSE,warning=FALSE}
+FeaturePlot(CD8,features = "Jund",split.by = "orig.ident",pt.size = 1.2, ncol=2)& 
+  scale_color_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))
+```
+
+## 4.17 scImpute
+```{r,message=FALSE,warning=FALSE}
+library(scImpute)
+library(data.table)
+# setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/12_impute")
+# count <- fread("./count_matrix.csv")
+# cells <- colnames(count)[-1]
+# head(cells)
+# meta <- CD8@meta.data
+# labels <- as.character(meta[cells,"RNA_snn_res.0.5"])
+# head(labels)
+# 
+# scimpute(# full path to raw count matrix
+#   count_path = "./count_matrix.csv", 
+#   infile = "csv",           # format of input file
+#   outfile = "csv",          # format of output file
+#   out_dir = "./",           # full path to output directory
+#   labeled = T,          # cell type labels not available
+#   labels = labels,
+#   drop_thre = 0.5,          # threshold set on dropout probability
+#   #Kcluster = 2,             # 2 cell subpopulations
+#   ncores = 10)              # number of cores used in parallel computation
+
+#impute result
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/result/12_impute/scimpute_count.csv")
+a <- as.data.frame(a)
+row.names(a) <- a$V1
+a <- a[,-1]
+colnames(a) <- gsub("[.]","-",colnames(a))
+a[1:5,1:5]
+
+object <- CreateSeuratObject(counts = a,min.cells = 0, min.features = 0)
+
+m <- CD8@meta.data
+m$cell <- rownames(m)
+
+object <- AddMetaData(object,m)
+
+mm <- object@meta.data
+
+object <- NormalizeData(object, normalization.method = "LogNormalize", scale.factor = 10000)
+object <- FindVariableFeatures(object, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(object)
+object <- ScaleData(object,features = all.genes)
+
+Idents(object) <- object$RNA_snn_res.0.5
+object2 <- subset(object,idents=c("0","1","2","4"))
+
+VlnPlot(object2,
+        #features = c("Junb","Jund","Jun"),
+        features = "Jund",
+        split.by = "orig.ident",
+        group.by = "RNA_snn_res.0.5",
+        pt.size = 0,
+        cols = color_4_sample,
+        ncol = 1,
+        #slot = "count"
+        slot="data"
+        #slot = "scale.data"
+)
+dev.off()
+
+Idents(CD8) <- CD8$RNA_snn_res.0.5
+CD8_2 <- subset(CD8,ident=c("0","1","2","4"))
+
+VlnPlot(CD8_2,features = "Jund",
+        split.by = "orig.ident",
+        group.by = "RNA_snn_res.0.5",
+        pt.size = 0,
+        cols = color_4_sample,
+        ncol = 1,
+        slot = "data")
+```
+
+## 4.18 JunD in public data
+```{r,message=FALSE,warning=FALSE}
+# data from GSE179994 
+# processed expression data from http://nsclcpd1.cancer-pku.cn/
+
+
+a <- fread("/media/liyaru/LYR/301project/public_data/nature cancer 21/JUN.exp.csv")
+a <- as.data.frame(a)
+summary(a$JUND)
+
+a$Treatment <- factor(a$Treatment,levels=c("pre","post"))
+a$Sub_Cluster <- factor(a$Sub_Cluster,levels = c("Non-exhausted","Terminal Tex","Proliferative"))
+
+
+stat_wilcox <- wilcox_test(group_by(a, Sub_Cluster), JUND ~ Treatment)  
+stat_wilcox <- add_significance(stat_wilcox, 'p')  
+stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'Sub_Cluster')
+
+p <- ggboxplot(a,x="Sub_Cluster",y="JUND" ,
+               fill='Treatment',
+               #color = "Treatment",
+               outlier.shape=NA,
+               #add="jitter"
+)+scale_fill_manual(values = color_4_sample_1[c(1,3)])
+
+
+p+ stat_pvalue_manual(stat_wilcox.test, 
+                      #label = 'p', 
+                      label = 'p.signif',
+                      tip.length = 0.005,
+                      hide.ns=T)  
+
+stat_wilcox <- wilcox_test(group_by(a, Sub_Cluster), JUN ~ Treatment)  
+stat_wilcox <- add_significance(stat_wilcox, 'p')  
+stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'Sub_Cluster')
+
+p <- ggboxplot(a,x="Sub_Cluster",y="JUN" ,
+               fill='Treatment',
+               #color = "Treatment",
+               outlier.shape=NA,
+               #add="jitter"
+)+scale_fill_manual(values = color_4_sample_1[c(1,3)])
+
+p+ stat_pvalue_manual(stat_wilcox.test, 
+                      #label = 'p', 
+                      label = 'p.signif',
+                      tip.length = 0.005,
+                      hide.ns=T)  
+```
+
+## 4.19 Activation score
+```{r,message=FALSE,warning=FALSE}
+library(ggpubr)
+library(rstatix)
+
+# T cell activation
+# GO:0042110
+t <- read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GO/GO_term_summary_20220103_120331_T_cell_activation.xlsx")
+tt <- unique(t$Symbol)
+
+CD8 <- AddModuleScore(CD8,features = list(tt),name = "T cell activation")
+
+t <- CD8@meta.data
+
+p <- ggboxplot(t, x="RNA_snn_res.0.5",y="T.cell.activation1",
+               fill = 'orig.ident',
+               outlier.shape=NA,
+               palette =  color_4_sample_1,)
+
+stat_wilcox <- wilcox_test(group_by(t, RNA_snn_res.0.5), T.cell.activation1 ~ orig.ident)  
+stat_wilcox <- add_significance(stat_wilcox, 'p')  
+stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'RNA_snn_res.0.5')
+
+p+ stat_pvalue_manual(stat_wilcox.test, 
+                      #label = 'p', 
+                      label = 'p.signif',
+                      tip.length = 0.005,
+                      hide.ns=T)  
+
+#check
+tt <- compare_means(T.cell.activation1 ~ orig.ident, 
+                    data = t, 
+                    group.by = "RNA_snn_res.0.5" ,
+                    paired = F)
+tt
+```
+
+## 4.20 GSEA
+```{r,message=FALSE,warning=FALSE}
+library(clusterProfiler)
+library(data.table)
+library(org.Mm.eg.db)
+library(openxlsx)
+library(GSEABase) 
+set.seed(618)
+
+#C0
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C0.DP_PD1.csv")
+keytypes(org.Mm.eg.db)
+
+glist <- a$avg_log2FC
+names(glist) <- a$V1
+glist <- sort(glist,decreasing = T)
+names(glist) <- toupper(names(glist))
+
+# c7: immunologic signature gene sets
+geneset <- read.gmt("/home/liyaru/public_Data/GSEA.gmt/c7.all.v7.5.1.symbols.gmt")
+
+#p.adjust.methods
+gsea <- GSEA(glist, TERM2GENE=geneset, verbose=FALSE,pvalueCutoff=1,seed=618)
+t <- gsea@result
+
+# fwrite(t,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/15.C0.GSEA.c7.immunologic signature gene sets.csv")
+
+
+#C1
+# DefaultAssay(CD8) <- "RNA"
+# CD8.markers <- FindMarkers(CD8,
+#                            group.by = "cluster_sample",
+#                            ident.1 = "1_DP",
+#                            ident.2 ="1_PD1",
+#                            #test.use = "MAST"
+#                            logfc.threshold=0
+# )
+# fwrite(CD8.markers,
+#        "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C1.DP_PD1.csv",
+#        row.names =T )
+
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C1.DP_PD1.csv")
+
+glist <- a$avg_log2FC
+names(glist) <- a$V1
+glist <- sort(glist,decreasing = T)
+names(glist) <- toupper(names(glist))
+
+geneset <- read.gmt("/home/liyaru/public_Data/GSEA.gmt/c7.all.v7.5.1.symbols.gmt")
+
+#p.adjust.methods
+gsea <- GSEA(glist, TERM2GENE=geneset, verbose=FALSE,pvalueCutoff=1,seed=618)
+t <- gsea@result
+# fwrite(t,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/15.C1.GSEA.c7.immunologic signature gene sets.csv")
+
+
+#C4
+# DefaultAssay(CD8) <- "RNA"
+# CD8.markers <- FindMarkers(CD8,
+#                            group.by = "cluster_sample",
+#                            ident.1 = "4_DP",
+#                            ident.2 ="4_PD1",
+#                            #test.use = "MAST"
+#                            logfc.threshold=0
+# )
+# fwrite(CD8.markers,
+#        "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C4.DP_PD1.csv",
+#        row.names =T )
+
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C4.DP_PD1.csv")
+
+glist <- a$avg_log2FC
+names(glist) <- a$V1
+glist <- sort(glist,decreasing = T)
+names(glist) <- toupper(names(glist))
+
+geneset <- read.gmt("/home/liyaru/public_Data/GSEA.gmt/c7.all.v7.5.1.symbols.gmt")
+
+#p.adjust.methods
+gsea <- GSEA(glist, TERM2GENE=geneset, verbose=FALSE,pvalueCutoff=1,seed=618)
+t <- gsea@result
+# fwrite(t,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/15.C4.GSEA.c7.immunologic signature gene sets.csv")
+
+enrichplot::gseaplot2(gsea,geneSetID = "GSE41867_DAY15_EFFECTOR_VS_DAY30_EXHAUSTED_CD8_TCELL_LCMV_CLONE13_UP")
+
+
+#C2
+# DefaultAssay(CD8) <- "RNA"
+# CD8.markers <- FindMarkers(CD8,
+#                            group.by = "cluster_sample",
+#                            ident.1 = "2_DP",
+#                            ident.2 ="2_PD1",
+#                            #test.use = "MAST"
+#                            logfc.threshold=0
+# )
+# fwrite(CD8.markers,
+#        "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C2.DP_PD1.csv",
+#        row.names =T )
+
+a <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C2.DP_PD1.csv")
+glist <- a$avg_log2FC
+names(glist) <- a$V1
+glist <- sort(glist,decreasing = T)
+names(glist) <- toupper(names(glist))
+
+geneset <- read.gmt("/home/liyaru/public_Data/GSEA.gmt/c7.all.v7.5.1.symbols.gmt")
+
+#p.adjust.methods
+gsea <- GSEA(glist, TERM2GENE=geneset, verbose=FALSE,pvalueCutoff=1,seed=618)
+t <- gsea@result
+# fwrite(t,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/15.C2.GSEA.c7.immunologic signature gene sets.csv")
+ enrichplot::gseaplot2(gsea,geneSetID = 1,pvalue_table=T)
+
+```
+
+### 4.20.1 GSEA Barplot
+```{r,message=FALSE,warning=FALSE}
+t <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/16.selected_GSEA.xlsx")
+t$LogP <- log10(t$pvalue)
+summary(t)
+
+# C0
+t <- t[t$Cluster=="0",]
+t <- t[order(-t$NES),]
+t$Description <- factor(t$Description,levels=t$Description)
+ggplot(t, aes(x=NES, y=Description, fill=-LogP)) + 
+  geom_bar(stat='identity') + 
+  scale_fill_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))+
+  theme_classic()+ylab(NULL)
+
+# C1
+t <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/16.selected_GSEA.xlsx")
+t$LogP <- log10(t$pvalue)
+summary(t)
+t <- t[t$Cluster=="1",]
+t <- t[order(-t$NES),]
+t$Description <- factor(t$Description,levels=t$Description)
+
+ggplot(t, aes(x=NES, y=Description, fill=-LogP)) + 
+  geom_bar(stat='identity') + 
+  scale_fill_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))+
+  theme_classic()+ylab(NULL)
+
+# C2
+t <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/16.selected_GSEA.xlsx")
+t$LogP <- log10(t$pvalue)
+summary(t)
+t <- t[t$Cluster=="2",]
+t <- t[order(-t$NES),]
+t$Description <- factor(t$Description,levels=t$Description)
+
+ggplot(t, aes(x=NES, y=Description, fill=-LogP)) + 
+  geom_bar(stat='identity') + 
+  scale_fill_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))+
+  theme_classic()+ylab(NULL)
+
+# C4
+t <- readxl::read_excel("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/16.selected_GSEA.xlsx")
+t$LogP <- log10(t$pvalue)
+summary(t)
+t <- t[t$Cluster=="4",]
+t <- t[order(-t$NES),]
+t$Description <- factor(t$Description,levels=t$Description)
+
+ggplot(t, aes(x=NES, y=Description, fill=-LogP)) + 
+  geom_bar(stat='identity') + 
+  scale_fill_gradientn(colors = c(rdwhbu(100)[1:45],rdwhbu(100)[55:100]))+
+  theme_classic()+ylab(NULL)
+
+```
+
+## 4.21 JunD level & Activation relationship
+```{r,message=FALSE,warning=FALSE}
+####------25.1 Jund exp level class------
+t <- as.data.frame(GetAssayData(CD8,assay = "RNA"))
+
+tt <-as.data.frame(t(t["Jund",]))
+summary(tt)
+tt$cell <- rownames(tt)
+
+quantile(tt$Jund)
+#cut by quantile
+tt <- tt[order(tt$Jund),]
+tt$Jund_class <- as.character(as.numeric(cut(1:nrow(tt),breaks = 4)))
+table(tt$Jund_class)
+
+#cut by median
+# ttt <- median(tt$Jund)
+# tt[tt$Jund > ttt,'Jund_class'] <- "JunD High"
+# tt[tt$Jund < ttt,'Jund_class'] <- "JunD Low"
+# table(tt$Jund_class)
+
+CD8 <- AddMetaData(CD8,tt)
+
+#CD8$Jund_class <- factor(CD8$Jund_class,levels = c("JunD Low","JunD High"))
+
+####-----25.2 Jund & activation---------
+t <- CD8@meta.data
+
+p <- ggboxplot(t, x="RNA_snn_res.0.5",y="T.cell.activation1",
+               fill = 'Jund_class',
+               outlier.shape=NA,
+               palette =  c("#38389C","#AAAAD4","#EEBBBB","#D86060")
+)
+
+stat_wilcox <- wilcox_test(group_by(t, RNA_snn_res.0.5), T.cell.activation1 ~ Jund_class)  
+stat_wilcox <- add_significance(stat_wilcox, 'p')  
+stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'RNA_snn_res.0.5')
+
+p+ stat_pvalue_manual(stat_wilcox.test, 
+                      #label = 'p', 
+                      label = 'p.signif',
+                      tip.length = 0.005,
+                      hide.ns=T)
+
+
+```
+
+
+# 5 scTCR-seqin vivo
+
+## 5.1 Immunarch
+```{r,message=FALSE,warning=FALSE}
+library(immunarch)  # Load the package into R
+
+# # get CD8 TCR 
+# {
+#   file_path = "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/TCR/merge/"
+#   cells <- colnames(CD8)
+#   #整合各个tcr文件 在barcode上加上相应的序号
+#   sup <- c("-1_1","-1_2","-1_3","-1_4")
+#   j=1
+#   for (i in c("Con","DAC","DP","PD1")){
+#     #i="Con"
+#     tcr <- read.csv(paste0(file_path,i,".csv"))
+#     tcr$barcode <- gsub("-1", "", tcr$barcode)
+#     tcr$barcode <- paste0(tcr$barcode,sup[j])
+#     tcr <- tcr[tcr$barcode %in% cells,]
+#     fwrite(tcr,paste0("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/TCR/CD8/",i,".csv"))
+#     j=j+1
+#   }
+# }
+
+file_path = "/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/1_cellranger_result/TCR/CD8/"
+immdata_10x <- repLoad(file_path)
+
+names(immdata_10x$data)
+
+####-----11.2 diversity--------
+# Hill numbers
+div_hill <- repDiversity(immdata_10x$data, "hill")
+p1 <- vis(div_hill, .by = c("Sample"), .meta = immdata_10x$meta)
+p1 + scale_color_manual(values=c(color_4_sample))
+
+
+# D50
+div_d50 <- repDiversity(immdata_10x$data, "d50")
+p2 <- vis(div_d50)
+p2+scale_fill_manual(values=c(color_4_sample))
+
+
+####----11.3 top proportion----------------
+#FigS9I
+imm_top <- repClonality(immdata_10x$data, .method = "top", .head = c(10, 100, 1000, 3000, 10000))
+imm_top
+imm_top %>% vis()
+```
+
+## 5.2 Clone size
+```{r,message=FALSE,warning=FALSE}
+####----- CLone size----------------------
+CD8@meta.data$sample_clonetype <- paste0(CD8@meta.data$orig.ident,"_",CD8@meta.data$clonotype_id)
+CD8@meta.data$cluster_sample_clonetype <- paste0(CD8@meta.data$RNA_snn_res.0.5,"_",CD8@meta.data$orig.ident,"_",CD8@meta.data$clonotype_id)
+
+CD8@meta.data[CD8@meta.data$frequency >= 10, 'freq']="10+"
+CD8@meta.data[CD8@meta.data$frequency >= 2 & CD8@meta.data$frequency < 10, 'freq']="2~9"
+CD8@meta.data[CD8@meta.data$frequency == 1, 'freq']="1"
+CD8@meta.data$freq <- factor(CD8@meta.data$freq,levels = c("1","2~9","10+"))
+
+###----- clone size TSNE ----------------
+Idents(CD8) <- CD8$RNA_snn_res.0.5
+CD8_0 <- subset(CD8,ident="0")
+
+DimPlot(CD8,group.by = "freq",pt.size = 1,split.by = "orig.ident",
+        cols = color4,ncol = 4)
+DimPlot(CD8_0,group.by = "freq",pt.size = 1,split.by = "orig.ident",
+        cols = color4,ncol = 4)
+
+```
+
+## 5.3 Cell ratio per cluster
+```{r,message=FALSE,warning=FALSE}
+###----- size ratio by cluster -----------
+# by cell
+m <- CD8@meta.data
+m$number=1
+
+ggplot(m,aes(RNA_snn_res.0.5,number,fill=freq))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 16)+
+  scale_fill_manual(
+    values = color3[c(1,3,5)]
+  )
+
+m <- ddply(m,'RNA_snn_res.0.5',transform,percent = 1/sum(number)*100)
+ggplot(m,aes(RNA_snn_res.0.5,percent,fill=freq))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 20)+
+  scale_fill_manual(values = color3[c(1,3,5)])
+```
+
+## 5.4 Clone ratio per cluster
+```{r,message=FALSE,warning=FALSE}
+# clonotype by Cluster
+m <- CD8@meta.data
+m <- m[!duplicated(m$cluster_sample_clonetype),]
+m$number=1
+ggplot(m,aes(RNA_snn_res.0.5,number,fill=freq))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 16)+
+  scale_fill_manual(
+    values = color3[c(1,3,5)]
+  )
+
+m <- ddply(m,'RNA_snn_res.0.5',transform,percent = 1/sum(number)*100)
+ggplot(m,aes(RNA_snn_res.0.5,percent,fill=freq))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 20)+
+  scale_fill_manual(values = color3[c(1,3,5)])
+```
+
+## 5.5 Cell ratio per sample
+```{r,message=FALSE,warning=FALSE}
+# cell by sample
+# FigS9 E-F
+m <- CD8@meta.data
+m$number=1
+ggplot(m,aes(orig.ident,number,fill=freq))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 16)+
+  scale_fill_manual(
+    values = color3[c(1,3,5)]
+  )
+
+m <- ddply(m,'orig.ident',transform,percent = 1/sum(number)*100)
+ggplot(m,aes(orig.ident,percent,fill=freq))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 20)+
+  scale_fill_manual(values = color3[c(1,3,5)])
+```
+
+## 5.6 highly clone
+```{r,message=FALSE,warning=FALSE}
+###-----12.4 highly expanded (size > 10)------
+m$cluster_clone <- paste0(m$RNA_snn_res.0.5,"_",m$sample_clonetype)
+m <- m[m$frequency >=10,]
+m$number=1
+
+ggplot(m,aes(orig.ident,number,fill=RNA_snn_res.0.5))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 16)+
+  scale_fill_manual(
+    values = color1
+    #values = my_color_palette
+  )+
+  RotatedAxis()
+
+m <- ddply(m,'orig.ident',transform,percent = 1/sum(number)*100)
+ggplot(m,aes(orig.ident,percent,fill=RNA_snn_res.0.5))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 20)+
+  scale_fill_manual(values = color1)+
+  RotatedAxis()
+```
+
+## 5.7 Top 10 clone in each sample
+```{r,message=FALSE,warning=FALSE}
+###------- top 10 clone by sample-----------
+for (i in c("Con","DAC","PD1","DP")){
+
+  m <- CD8@meta.data
+  m <- m[m$orig.ident==i,]
+  t <- table(m$sample_clonetype)
+  t <- t[order(-t)]
+  tt <- t[1:10]
+  
+  cc <- names(tt)
+  
+  m <- m[m$sample_clonetype %in% cc,]
+
+  m$sample_clonetype <- factor(m$sample_clonetype,levels = cc)
+  m$number=1
+
+  ttt <- ggplot(m,aes(sample_clonetype,number,fill=RNA_snn_res.0.5))+
+    geom_bar(stat="identity",position="stack")+
+    theme_classic(base_size = 16)+
+    scale_fill_manual(
+      values = color1)+
+    RotatedAxis()
+  print(ttt)
+}
+```
+
+## 5.8 Top50 clone in C0
+```{r,message=FALSE,warning=FALSE}
+
+m <- CD8@meta.data
+#unique(m$sample_clonetype)
+m <- m[m$RNA_snn_res.0.5 == "0",]
+t <- table(m$sample_clonetype)
+t <- t[order(-t)]
+tt <- t[1:50]
+
+cc <- names(tt)
+m <- m[m$sample_clonetype %in% cc,]
+
+m$sample_clonetype <- factor(m$sample_clonetype,levels = cc)
+
+m$number=1
+
+ttt <- ggplot(m,aes(sample_clonetype,number,fill=orig.ident))+
+  geom_bar(stat="identity",position="stack")+
+  theme_classic(base_size = 16)+
+  scale_fill_manual(
+    values = color_4_sample
+    #values = my_color_palette
+  )+
+  RotatedAxis()
+ttt
+```
+
+## 5.8 Heatmap of expression
+```{r,message=FALSE,warning=FALSE}
+a <- fread("/media/liyaru/LYR/301project/Table/target_gene_2.csv",header = F)
+a <- a$V1
+a <- tolower(a)
+a <- capitalize(a)
+a[27] <- 'Tbx21'
+
+CD8@meta.data$freq <- as.character(CD8@meta.data$freq)
+CD8@meta.data[CD8@meta.data$frequency >= 10, 'freq']="10+"
+CD8@meta.data[CD8@meta.data$frequency >= 2 & CD8@meta.data$frequency < 10, 'freq']="2~10"
+CD8@meta.data[CD8@meta.data$frequency == 1, 'freq']="1"
+
+CD8@meta.data$sample_freq <- paste0(CD8@meta.data$orig.ident,"_",CD8@meta.data$freq)
+table(CD8@meta.data$sample_freq)
+
+t <- AverageExpression(CD8,assays = "RNA",features = a,group.by = "sample_freq")
+t <- t[["RNA"]]
+t <- as.data.frame(t)
+t <- t[,c("Con_2~10","DAC_2~10","PD1_2~10","DP_2~10","Con_10+","DAC_10+","PD1_10+","DP_10+")]
+ 
+pheatmap(t,scale = "row",
+         cluster_rows=F,cluster_cols = F,
+         color=rdwhbu(100))
+```
+
+## 5.9 GO of highly clonal cells
+```{r,message=FALSE,warning=FALSE}
+library(clusterProfiler)
+library(data.table)
+library(org.Mm.eg.db)
+library(openxlsx)
+
+####------ GO---------------------
+CD8@meta.data$sample_freq <- paste0(CD8@meta.data$orig.ident,"_",CD8@meta.data$freq)
+DefaultAssay(CD8) <- "RNA"
+CD8.markers <- FindMarkers(CD8,
+                           group.by = "sample_freq",
+                           ident.1 = "DP_10+",
+                           ident.2 ="PD1_10+",
+                           #test.use = "MAST"
+                           logfc.threshold=0
+)
+#fwrite(CD8.markers,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0620/12.expand10.DEG.csv",row.names = T)
+
+a <- CD8.markers
+a <- a[a$p_val< 0.05 & a$avg_log2FC > 0,]
+
+ego <- enrichGO(
+  gene          = rownames(a),
+  keyType       = "SYMBOL",
+  OrgDb         =  org.Mm.eg.db,
+  ont           = "ALL",
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.05,
+  #readable      = TRUE
+)
+
+clusterProfiler::dotplot(ego, showCategory = 10)+
+  scale_color_gradientn(colors = c(rdwhbu_re(100)[1:45],rdwhbu_re(100)[55:100]))
+
+```
+
+# 6 ATAC-seq
+
+## 6.1 Homer motif enrichment result
+
+### 6.1.1 DP gain peak
+```{r,message=FALSE,warning=FALSE}
+library(ggplot2)
+library(ggrepel)
+library(data.table)
+library(tidyverse)
+
+setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/7_peak_new/4_homer/2_motif")
+
+DP_gain <- fread("gain/knownResults.txt")
+
+DP_gain$FC <- (as.numeric(gsub("%","",DP_gain$`% of Target Sequences with Motif`)))  / (as.numeric(gsub("%","",DP_gain$`% of Background Sequences with Motif` ))) 
+
+colnames(DP_gain) <- c("Motif Name","Consensus","P-value","Log P-value","q-value (Benjamini)",
+                       "# of Target Sequences with Motif",
+                       "% of Target Sequences with Motif",
+                       "# of Background Sequences with Motif",
+                       "% of Background Sequences with Motif",
+                       "FC")
+
+
+DP_gain <- DP_gain[,c(1,4,5,7,10)]
+
+DP_loss <- fread("loss/knownResults.txt")
+DP_loss$FC <- (as.numeric(gsub("%","",DP_loss$`% of Target Sequences with Motif`)))  / (as.numeric(gsub("%","",DP_loss$`% of Background Sequences with Motif` ))) 
+DP_loss$FC <- -DP_loss$FC
+
+#DP_loss$FC <- -DP_loss$FC
+colnames(DP_loss) <- c("Motif Name","Consensus","P-value","Log P-value","q-value (Benjamini)",
+                       "# of Target Sequences with Motif",
+                       "% of Target Sequences with Motif",
+                       "# of Background Sequences with Motif",
+                       "% of Background Sequences with Motif",
+                       "FC")
+
+
+DP_loss <- DP_loss[,c(1,4,5,7,10)]
+
+#merge
+r <- rbind(DP_gain,DP_loss)
+Dat<- r
+
+Dat <- Dat[Dat$FC >0 & !is.na(Dat$FC),]
+summary(Dat)
+
+colnames(Dat)[1] <- "Motif"
+colnames(Dat)[2] <- "logP"
+Dat <- as.data.frame(Dat)
+Dat <- separate(Dat,Motif,into=c("Motif","Motif_info"),sep="/")
+
+tf <- c(
+  #DP LOSS
+  "SpiB(ETS)","PU.1:IRF8(ETS:IRF)","PU.1(ETS)",
+  "ELF5(ETS)","IRF8(IRF)","CTCF(Zf)",
+  "BORIS(Zf)","ELF3(ETS)","BIM1(bHLH)",
+  "Elf4(ETS)","PU.1-IRF(ETS:IRF)","IRF3(IRF)",
+  #DP GAIN
+  "Cux2(Homeobox)","TEAD2(TEA)","TEAD(TEA)","TEAD1(TEAD)",
+  "NF1(CTF)","RUNX1(Runt)","RUNX2(Runt)","Fos(bZIP)","JunB(bZIP)",
+  "Atf3(bZIP)","BATF(bZIP)","Fosl2(bZIP)")
+
+Dat$threshold <- 'Other'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC > 0,'threshold'] = 'Gain Peak Enriched Motif'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC > 0 & Dat$Motif %in% tf,'threshold'] = 'Gain Labeled'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC < 0,'threshold'] = 'Loss Peak Enriched Motif'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC < 0 & Dat$Motif %in% tf,'threshold'] = 'Loss Labeled'
+table(Dat$threshold)
+
+Dat$threshold <- factor(Dat$threshold,levels = c('Gain Peak Enriched Motif','Gain Labeled',
+                                                 #'Loss Peak Enriched Motif',
+                                                 #'Loss Labeled',
+                                                 'Other'))
+
+data_text <- Dat[Dat$Motif %in% tf & Dat$`q-value (Benjamini)` < 0.05 ,]
+data_text <- separate(data_text,col = Motif,into = c("Motif","Sup"),sep = "[(]")
+data_text$Motif <- toupper(data_text$Motif)
+data_text$Motif <- paste0(data_text$Motif,"(",data_text$`% of Target Sequences with Motif`,")")
+
+ggplot(Dat,aes(x=FC,y=-logP,color=threshold))+
+  geom_point()+
+  scale_color_manual(values=c(  "#EEBBBB","#CD3333","#808080"))+
+  geom_text_repel(
+    data = data_text ,
+    aes(label = Motif),
+    size = 4,
+    segment.color = "black", show.legend = FALSE,
+    max.overlaps=40)+
+  theme_bw()+
+  theme(
+    legend.title = element_blank()
+  )+
+  ylab('-log P value')+
+  xlab('Fold change')
+```
+
+### 6.1.2 DP gain peak new
+```{r,message=FALSE,warning=FALSE}
+# Dat$percent <- as.numeric(gsub("%","",Dat$`% of Target Sequences with Motif`))
+# Dat[Dat$percent > 40,"% of Target Sequences with Motif"] = "40%"
+
+#Dat$percent2 = Dat$percent
+#Dat[Dat$percent2 > 30,'percent2'] = 30
+#Dat$percent2
+Dat=Dat[Dat$`q-value (Benjamini)` < 0.05,]
+
+ggplot(Dat,aes(x=FC,y=-logP,
+               color = as.numeric(gsub("%","",`% of Target Sequences with Motif`))))+
+               #color=threshold
+  geom_point()+
+  #scale_color_manual(values=c(  "#EEBBBB","#CD3333","#808080"))+
+  geom_text_repel(
+    data = data_text ,
+    aes(label = Motif),
+    size = 4,
+    segment.color = "black", show.legend = FALSE,
+    max.overlaps=40)+
+  theme_bw()+
+  theme(
+    legend.title = element_blank()
+  )+
+  ylab('-log P value')+
+  xlab('Fold change')+
+  scale_color_gradient2(#limits = c(0,40), # 数据上下限
+                         #breaks = c(0,10,40), # 分段点
+                         #low = "navy", # 下限颜色
+                         #mid = "pink", # 中值颜色
+                         #mid="white",
+                         low = "grey",
+                         mid = "pink",
+                         high = "#B9181E",
+                         midpoint = 12
+                         )+
+  xlim(c(0,2.5))+
+  ylim(c(0,45))
+```
+
+### 6.1.3 P vs C gain and loss peak 
+```{r,message=FALSE,warning=FALSE}
+setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/7_peak_new/4_homer/2_motif")
+PD1_gain <- fread("PD1_Ctrl_gain/knownResults.txt")
+PD1_gain$FC <- (as.numeric(gsub("%","",PD1_gain$`% of Target Sequences with Motif`)))  / (as.numeric(gsub("%","",PD1_gain$`% of Background Sequences with Motif` ))) 
+summary(PD1_gain$FC)
+
+colnames(PD1_gain) <- c("Motif Name","Consensus","P-value","Log P-value","q-value (Benjamini)",
+                        "# of Target Sequences with Motif",
+                        "% of Target Sequences with Motif",
+                        "# of Background Sequences with Motif",
+                        "% of Background Sequences with Motif",
+                        "FC")
+# fwrite(PD1_gain,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/7_P_vs_C_gain.csv")
+PD1_gain <- PD1_gain[,c(1,4,5,10)]
+
+PD1_loss <- fread("PD1_Ctrl_loss/knownResults.txt")
+PD1_loss$FC <- (as.numeric(gsub("%","",PD1_loss$`% of Target Sequences with Motif`)))  / (as.numeric(gsub("%","",PD1_loss$`% of Background Sequences with Motif` ))) 
+PD1_loss$FC <- -PD1_loss$FC
+
+colnames(PD1_loss) <- c("Motif Name","Consensus","P-value","Log P-value","q-value (Benjamini)",
+                        "# of Target Sequences with Motif",
+                        "% of Target Sequences with Motif",
+                        "# of Background Sequences with Motif",
+                        "% of Background Sequences with Motif",
+                        "FC")
+#fwrite(PD1_loss,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/PDF_0531/7_P_vs_C_loss.csv")
+PD1_loss <- PD1_loss[,c(1,4,5,10)]
+
+#merge
+r <- rbind(PD1_gain,PD1_loss)
+Dat<- r
+
+colnames(Dat)[1] <- "Motif"
+colnames(Dat)[2] <- "logP"
+
+Dat <- as.data.frame(Dat)
+
+Dat <- tidyr::separate(Dat,col=Motif,into=c("Motif","Motif_info"),sep="\\/")
+
+fc = 0
+Dat$threshold = factor(ifelse(Dat$`q-value (Benjamini)` < 0.05 & abs(Dat$FC) >= fc, ifelse(Dat$FC>=fc ,'Up','Down'),'Other'),levels=c('Up','Down','Other'))
+
+tf <- c(
+  #PD1 LOSS
+  "NF1(CTF)","TEAD(TEA)","CTCF(Zf)","TEAD2(TEA)",
+  "BORIS(Zf)","TEAD1(TEAD)","Jun-AP1(bZIP)","Fosl2(bZIP)",
+  "Fra2(bZIP)","JunB(bZIP)","Fos(bZIP)","Atf3(bZIP)","BATF(bZIP)",
+  "NFAT:AP1(RHD,bZIP)",
+  #PD1 GAIN
+  "SpiB(ETS)","PU.1:IRF8(ETS:IRF)","PU.1(ETS)",
+  "IRF8(IRF)","IRF1(IRF)","Elf4(ETS)","ELF3(ETS)",
+  "ETS(ETS)","IRF3(IRF)","IRF2(IRF)","Nur77(NR)")
+
+
+Dat$threshold <- 'Other'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC > 0,'threshold'] = 'Gain Peak Enriched Motif'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC > 0 & Dat$Motif %in% tf,'threshold'] = 'Gain Labeled'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC < 0,'threshold'] = 'Loss Peak Enriched Motif'
+Dat[Dat$`q-value (Benjamini)` < 0.05 & Dat$FC < 0 & Dat$Motif %in% tf,'threshold'] = 'Loss Labeled'
+table(Dat$threshold)
+
+Dat$threshold <- factor(Dat$threshold,levels = c('Gain Peak Enriched Motif','Gain Labeled','Loss Peak Enriched Motif',
+                                                 'Loss Labeled','Other'))
+
+data_text <- Dat[Dat$Motif %in% tf & Dat$`q-value (Benjamini)` < 0.05 ,]
+data_text <- separate(data_text,col = Motif,into = c("Motif","Sup"),sep = "[(]")
+
+ggplot(Dat,aes(x=FC,y=-logP,color=threshold))+
+  geom_point()+
+  scale_color_manual(values=c("#EEBBBB","#CD3333","#AAAAD4", "#000080","#808080"))+
+  geom_text_repel(
+    data = data_text,
+    aes(label = Motif),
+    size = 4,
+    segment.color = "black", show.legend = FALSE,
+    max.overlaps=40)+
+  theme_bw()+
+  theme(
+    legend.title = element_blank()
+  )+
+  ylab('-log P value')+
+  xlab('Fold change')
+
+```
+
+## 6.2 Sample correlation
+```{r,message=FALSE,warning=FALSE}
+# calculated from deeptools
+# see in ATAC-seq_data_processing 9 RPKM nomolized 
+d <- as.data.frame(fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/6_deeptools_TSS/outRawCounts_RPKM_bw.tab"))
+colnames(d) <- c("chr","start","end","Ctrl1","Ctrl2","P1","P2","DP1","DP2")
+
+d <- d[,4:9]
+t <- cor(d,method = "pearson")
+
+pheatmap(t,color = rdwhbu(100))
+
+```
+
+## 6.4 Peaks 
+```{r,message=FALSE,warning=FALSE}
+####---------- merge all sample peaks----
+# library(dplyr)
+# library(tidyverse)
+# setwd("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/7_peak_new/1_peak")
+# peak.dt <- fread("all_1_overlap.narrowPeak")
+# colnames(peak.dt)=c("chr","start","end")
+# 
+# peak.dt2 <- fread("Con_overlap_1_peak")
+# peak.dt2 <- peak.dt2[,1:3]
+# colnames(peak.dt2)=c("chr2","start2","end2")
+# 
+# chroms.vector <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10",
+#                    "chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chrX","chrY")
+# 
+# all.peaks.dt.list <- lapply(chroms.vector, FUN=function(temp.chrom){
+#   #temp.chrom="chrY"
+#   temp.peak.dt <- peak.dt[chr==temp.chrom]
+#   temp.peak2.dt <- peak.dt2[chr2==temp.chrom]
+#   aa=temp.peak.dt[, {
+#     index <- .I
+#     if ((index+1) %% 1000 == 0){
+#       cat(date(), " : processing index", index, "\n")
+#     }
+#     nrow(temp.peak2.dt[start <= end2 & start2 <=end])
+#   },  list(chr, start,end)]
+#   
+# })
+# result <- rbindlist(all.peaks.dt.list)
+# table(result$V1)
+# result[which(result$V1 >1),'V1'] <- 1
+# colnames(result)[4] <- "Ctrl"
+# 
+# ## PD1
+# peak.dt <- result
+# 
+# peak.dt2 <- fread("PD1_overlap_1_peak")
+# peak.dt2 <- peak.dt2[,1:3]
+# colnames(peak.dt2)=c("chr2","start2","end2")
+# 
+# chroms.vector <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10",
+#                    "chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chrX","chrY")
+# 
+# summary(peak.dt)
+# class(peak.dt$start)
+# all.peaks.dt.list <- lapply(chroms.vector, FUN=function(temp.chrom){
+#   #temp.chrom="chrY"
+#   temp.peak.dt <- peak.dt[chr==temp.chrom]
+#   temp.peak2.dt <- peak.dt2[chr2==temp.chrom]
+#   aa=temp.peak.dt[, {
+#     index <- .I
+#     if ((index+1) %% 1000 == 0){
+#       cat(date(), " : processing index", index, "\n")
+#     }
+#     nrow(temp.peak2.dt[start <= end2 & start2 <=end])
+#   },  list(chr, start,end,Ctrl)]
+#   
+# })
+# result <- rbindlist(all.peaks.dt.list)
+# table(result$V1)
+# result[which(result$V1 >1),'V1'] <- 1
+# colnames(result)[5] <- "PD1"
+# 
+# ##DP
+# peak.dt <- result
+# 
+# peak.dt2 <- fread("DP_overlap_1_peak")
+# peak.dt2 <- peak.dt2[,1:3]
+# colnames(peak.dt2)=c("chr2","start2","end2")
+# 
+# chroms.vector <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10",
+#                    "chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chrX","chrY")
+# 
+# all.peaks.dt.list <- lapply(chroms.vector, FUN=function(temp.chrom){
+#   #temp.chrom="chrY"
+#   temp.peak.dt <- peak.dt[chr==temp.chrom]
+#   temp.peak2.dt <- peak.dt2[chr2==temp.chrom]
+#   aa=temp.peak.dt[, {
+#     index <- .I
+#     if ((index+1) %% 1000 == 0){
+#       cat(date(), " : processing index", index, "\n")
+#     }
+#     nrow(temp.peak2.dt[start <= end2 & start2 <=end])
+#   },  list(chr, start,end,Ctrl,PD1)]
+#   
+# })
+# result <- rbindlist(all.peaks.dt.list)
+# table(result$V1)
+# result[which(result$V1 >1),'V1'] <- 1
+# colnames(result)[6] <- "DP"
+# 
+# fwrite(result,"/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/7_peak_new/2_peak_matrix/all_peak.csv")
+```
+
+### 6.4.1 Venn for peaks 
+```{r,message=FALSE,warning=FALSE}
+library(VennDiagram)
+peak.dt <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/7_peak_new/2_peak_matrix/all_peak.csv")
+head(peak.dt)
+peak.dt <- unite(peak.dt,peak,chr,start,end)
+
+Ctrl <- peak.dt [which(peak.dt$Ctrl==1),]
+Ctrl <- Ctrl$peak
+
+PD1 <- peak.dt [which(peak.dt$PD1==1),]
+PD1 <- PD1$peak
+
+DP <- peak.dt [which(peak.dt$DP==1),]
+DP<- DP$peak
+
+venn_list <- list(Ctrl,PD1,DP)
+names(venn_list) <- c("Ctrl","PD1","DP")
+
+p=venn.diagram(
+  x = venn_list,
+  filename = NULL,
+  col = "black",
+  fill=color_4_sample_1[c(1,3,4)],
+  alpha = 0.5
+)
+grid.draw(p)
+```
+
+### 6.4.2 peak number bar plot
+```{r,message=FALSE,warning=FALSE}
+
+a <- readxl::read_excel("/media/liyaru/LYR/301project/Fix/2_ATAC/挑选出gain-lost+peaks候选基因.xlsx")
+a <- as.data.frame(a)
+
+genes <- c()
+for (i in 1:ncol(a)){
+  t <- a[2:13,i]
+  t <- t[!is.na(t)]
+  genes <- c(genes,t)
+}
+genes <- unique(genes) %>%
+  tolower()%>%
+  Hmisc::capitalize()
+
+t <- fread("/media/liyaru/LYR/301project/Fix/2_ATAC/Genes_gain_loss_peak_number.csv") %>%
+  as.data.frame()
+rownames(t) <- t$Gene
+tt <- t[genes,]
+
+df = melt(tt,id.vars = "Gene")              
+head(df)   
+
+# df <- df[df$Gene != c("Prdm1"),]
+
+ggplot(df, aes(
+  x = factor(Gene,levels = unique(Gene)[32:1]),    
+  y = ifelse(variable == "Gain_peak_number", value, -value),  
+  fill = variable)) +
+  geom_bar(stat = 'identity')+                                # 画柱形图
+  coord_flip()+                                               # x轴与y轴互换位置
+  # geom_text(                                                  # 在图形上加上数字标签
+  #   aes(label=value,                                          # 标签的值（数据框的第三列）
+  #       # vjust = ifelse(variable == "Up", -0.5, 1),          # 垂直位置。如果没有coord_flip()，则可以取消这行注释
+  #       #hjust = ifelse(variable == "Up", -0.4, 1.1)           # 水平位置
+  #   ),
+  #   size=2                                                    # 标签大小
+  #   
+  # )+
+  scale_y_continuous(                                         # 调整y轴
+    labels = abs,                                             # 刻度设置为绝对值
+    expand = expansion(mult = c(0.1, 0.1))) +                  # 在y轴的两侧，留下一部分的空白位置，防止加标签的时候，显示不全
+  theme_classic()+
+  scale_fill_manual(values=c("brown","navy"))
+
+```
+
+
+## 6.5 Track
+```{r,message=FALSE,warning=FALSE}
+# library(ggplot2)
+# library(patchwork)
+# library(cowplot)
+# library(tidyverse)
+# library(GEOquery)
+# library(GenomicRanges)
+# library(GenomicFeatures)
+# library(org.Mm.eg.db)
+# library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+# library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+# library(clusterProfiler)
+# library(future.apply)
+# library(rtracklayer)
+# library(GENOVA)
+# library(sigminer)
+# library(RColorBrewer)
+# 
+# # from LongTeng Github
+# source("/home/liyaru/Software/R/PlotEpiTrackByR-main/myfunction_lib.R")
+# 
+# setwd("/media/liyaru/LYR/301project/Fix")
+
+####------Reference-------------------------------
+# mm10 <- TxDb.Mmusculus.UCSC.mm10.knownGene
+# 
+# mm10.tx <- myGetGRangesFromsTxDb(txdb = mm10,
+#                                 standard.chromosomes = T,
+#                                 verbose = T)
+# 
+# tmp <- clusterProfiler::bitr(mm10.tx$gene_id,
+#             fromType = "ENTREZID",
+#             toType = "SYMBOL",
+#             OrgDb = org.Mm.eg.db)
+# 
+# tmp <- tmp[!duplicated(tmp$SYMBOL),]
+# ttt.mm10.tx <- mm10.tx[mm10.tx$gene_id %in% tmp$ENTREZID]
+# ttt.mm10.tx$gene_id <- plyr::mapvalues(ttt.mm10.tx$gene_id,
+#                                       from = tmp$ENTREZID,
+#                                       to = tmp$SYMBOL)
+# mm10.tx <- ttt.mm10.tx
+# 
+# 
+# myPlot <- function(tmp.region,range_max){
+#   p_gene <- myGenePlot(annotation = mm10.tx,
+#                        region = tmp.region,
+#                        arrow_sbreaks = 600,
+#                        font_size = 18,
+#                        label_size = 3)+
+#     ylab("Gene")+
+#     theme(plot.margin = unit(c(0,0,0,0), "cm"),
+#           axis.title.y = element_text(angle = 0,vjust = 0.5,hjust = 0.5),
+#           axis.line = element_line(size = 1),
+#           axis.ticks = element_line(size = 1))
+#   p_gene
+#   
+#   tmp.levels <- c("Con","PD1","DP")
+#   tmp.colors <- c(rgb(23,23,23,160, maxColorValue = 255),
+#                   "#579125","#B9181E")
+#                   
+#   tmp.list.1 <- lapply(seq_along(tmp.levels),function(ii){
+#     cat(ii,sep = "\n")
+#     p1 <- myBigwigTrack(region = as(tmp.region,"GRanges"),
+#                         bigwig = paste0("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/BW/",tmp.levels[ii],"Rep1","_rmM_rmDUP_rmLowMAPQ_RPKM.bw"),
+#                         smooth = 100,
+#                         lognorm = F,
+#                         type = "bar",
+#                         y_label = paste0(tmp.levels[ii]," Rep1"),
+#                         fontsize=18,
+#                         track.color=tmp.colors[ii],
+#                         tmp.ylimits=c(0,range_max),
+#                         max.downsample = 3000,
+#                         downsample.rate = 0.1,
+#                         tmp.seed=42)
+#     p2 <- myBigwigTrack(region = as(tmp.region,"GRanges"),
+#                         bigwig = paste0("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/BW/",tmp.levels[ii],"Rep2","_rmM_rmDUP_rmLowMAPQ_RPKM.bw"),
+#                         smooth = 100,
+#                         lognorm = F,
+#                         type = "bar",
+#                         y_label =paste0(tmp.levels[ii]," Rep2"),
+#                         fontsize=18,
+#                         track.color=tmp.colors[ii],
+#                         tmp.ylimits=c(0,range_max),
+#                         max.downsample = 3000,
+#                         downsample.rate = 0.1,
+#                         tmp.seed=42)
+#     p <- list(p1,p2)
+#     return(p)
+#   })
+#   
+#   tmp.list.1 <- Reduce(c,tmp.list.1)
+#   
+#   
+#   peak <- fread("/media/liyaru/LYR/301project/Fix/1_Jund_peak/2_call_peak_from_fastq/JunD_peaks.narrowPeak")
+#   
+#   position <- strsplit(tmp.region,split = c(":","-"))
+#   chr <- position[[1]][1]
+#   site <- strsplit(position[[1]][2],split = "-")
+#   start <- site[[1]][1]
+#   end <- site[[1]][2]
+#   
+#   peak_plot <- peak[peak$V1 == chr & peak$V3 >= start & peak$V2 <=end,]
+#   
+#   bg <- data.frame(matrix(c(start,end,2,2),ncol = 2))
+#   colnames(bg) <- c("position","peak")
+#   bg$position <- as.numeric(bg$position)
+#   bg$peak <- as.numeric(bg$peak)
+#   
+#   peak_track <- ggplot(
+#     data = bg,
+#     mapping = aes_string(x = "position", y = "peak"))+
+#     theme_cowplot(font_size = 18)+
+#     theme(axis.line = element_line(size = 0.5),
+#           axis.ticks = element_line(size = 0.5),
+#           axis.title.y = element_text(angle = 0),
+#           axis.line.y = element_blank(),
+#           axis.ticks.y = element_blank())+
+#     scale_x_continuous(limits = bg$position)+
+#     annotate("segment", x = peak_plot$V2, xend = peak_plot$V3,y = 0, yend = 0,size = 2)
+#   peak_track
+#   
+#   
+#   plot.list <- tmp.list.1
+#   
+#   pp <- (wrap_plots(plot.list,ncol = 1) + 
+#            peak_track+
+#            p_gene  + 
+#            plot_layout(ncol = 1,heights = c(rep(1,12),3))) + 
+#     plot_annotation(title = tmp.region) & 
+#     theme(plot.title = element_text(hjust = 1),
+#           axis.line.x = element_blank(),
+#           axis.text = element_blank(),
+#           axis.ticks = element_blank(),
+#           axis.title.x = element_blank())
+#   return(pp)
+# }
+# 
+# 
+# # Bcl2
+# mm10.tx[mm10.tx$gene_id=="Bcl2"]
+# myPlot("chr1:106680000-106695000",20)
+
+
+# mm10.tx[mm10.tx$gene_id=="Map4k4"]
+# myPlot("chr1:39900000-39910000",100)
+# 
+# 
+# mm10.tx[mm10.tx$gene_id=="Stat4"]
+# myPlot("chr1:52020000-52030000",60)
+# 
+# mm10.tx[mm10.tx$gene_id=="Cd44"]
+# myPlot("chr2:102890000-102940000",60)
+# 
+# mm10.tx[mm10.tx$gene_id=="Camk2d"]
+# myPlot("chr3:126830000-126840000",50)
+# 
+# mm10.tx[mm10.tx$gene_id=="Dnajc5b"]
+# myPlot("chr3:19410000-19520000",60)
+# 
+# mm10.tx[mm10.tx$gene_id=="Cxcr5"]
+# myPlot("chr9:19410000-19520000",60)
+# 
+# 
+# mm10.tx[mm10.tx$gene_id=="Runx2"]
+# myPlot("chr9:19410000-19520000",60)
+# 
+# 
+# mm10.tx[mm10.tx$gene_id=="Irf1"]
+# myPlot("chr11:53770000-53790000",60)
+```
+## 6.6 ATAC width
+```{r,message=FALSE,warning=FALSE}
+# aa <- fread("/media/liyaru/LYR/301project/Fix/1_Jund_peak/3_Jund_ATAC_overlap/3_ATAC_JunD.csv")
+# aa$class = "other"
+# aa[aa$DP==1 & aa$PD1==0,'class'] ="gain"
+# aa[aa$DP==0 & aa$PD1==1,'class'] ="loss"
+# 
+# aaa <- aa[aa$class != "other",]
+# ggplot(aaa, aes(x = width, fill = class)) +
+#   geom_density(alpha = 0.3)
+# 
+# aaa$class <- factor(aaa$class,c("gain","loss"))
+# 
+# p <- ggboxplot(aaa,x="class",y="width" ,
+#                fill='class',
+#                #color = "Treatment",
+#                outlier.shape=NA,
+#                #add="jitter"
+# )
+# 
+# stat_wilcox <- t_test(group_by(aaa), width ~ class,paired = F)  
+# stat_wilcox <- add_significance(stat_wilcox, 'p')  
+# stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'class')
+# 
+# p+ stat_pvalue_manual(stat_wilcox.test, 
+#                       #label = 'p', 
+#                       label = 'p.signif',
+#                       tip.length = 0.005,
+#                       hide.ns=T)+
+#   scale_fill_manual(values = c("#B9181E",rgb(23,23,23,160, maxColorValue = 255)))+
+#   coord_cartesian(ylim = c(0,750))
+
+```
+
+
+# 7 JunD ChIP-seq
+
+## 7.1 JunD & ATAC overlap
+```{r,message=FALSE,warning=FALSE}
+####---------ATAC-seq & JunD--------------------------
+# t <- fread("/media/liyaru/LYR/301project/Fix/1_Jund_peak/1_peak/gain.bed")
+# t <- t[order(t$V1,t$V2),]
+# fwrite(t,"/media/liyaru/LYR/301project/Fix/1_Jund_peak/1_peak/gain_reorder.bed",sep="\t",col.names = F)
+
+# methyl.dt <- fread("/media/liyaru/LYR/301project/public_data/CHIP/JUND_fastq/JunD_MACS2/JunD_peaks.narrowPeak")
+# head(methyl.dt)
+# colnames(methyl.dt)[1:3] <- c("chrom","start","end")
+# summary(methyl.dt)
+# methyl.dt$n <- 1
+# 
+# peak.dt <- fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/ATAC_result/7_peak_new/3_peak_annotation/all_matrix.csv")
+# head(peak.dt)
+# peak.dt <- separate(peak.dt,col = "peak",into = c("chrom","start","end"),remove=F)
+# summary(peak.dt)
+# peak.dt$start <- as.numeric(peak.dt$start)
+# peak.dt$end <- as.numeric(peak.dt$end)
+# 
+# chroms.vector <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10",
+#                    "chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chrX","chrY")
+# 
+# #rm(all.peaks.dt.list)
+# 
+# all.peaks.dt.list <- lapply(chroms.vector, FUN=function(temp.chrom){
+#   #temp.chrom="chrY"
+#   temp.peak.dt <- peak.dt[chrom==temp.chrom]
+#   temp.methyl.dt <- methyl.dt[chrom==temp.chrom]
+#   aa=temp.peak.dt[, {
+#     index <- .I
+#     if ((index+1) %% 100 == 0){
+#       cat(date(), " : processing index", index, "\n")
+#     }
+#     temp.methyl.dt[end >= peak.start & start <= peak.end][,sum(n)]
+#   },  list(chrom, peak.start=start, peak.end=end,peak,width,strand,annotation,geneChr,geneStart,geneEnd,geneLength,geneStrand,geneId,
+#   transcriptId,distanceToTSS,ENSEMBL,SYMBOL,GENENAME,flank_txIds,flank_geneIds,flank_gene_distances,Ctrl,PD1,DP)]
+# })
+# result <- rbindlist(all.peaks.dt.list)
+# 
+# # fwrite(result,"/media/liyaru/LYR/301project/Fix/1_Jund_peak/3_Jund_ATAC_overlap/3_ATAC_JunD.csv")
+
+```
+
+### 7.1.1 overlap genes
+```{r,message=FALSE,warning=FALSE}
+result <- fread("/media/liyaru/LYR/301project/Fix/1_Jund_peak/3_Jund_ATAC_overlap/3_ATAC_JunD.csv")
+t <- result[result$PD1 ==0 & result$DP==1,]
+table(t$V1 )
+#t <- result[result$PD1 ==1 & result$DP==0 & result$V1 == 1,]
+t <- result[result$PD1 ==0 & result$DP==1 & result$V1 == 1,]
+JUND_gene <- unique(t$SYMBOL)
+
+# tt <- t[grep("Promoter",t$annotation),] 
+# JUND_gene <- unique(tt$SYMBOL)
+
+t <-as.data.frame(fread("/media/liyaru/LYR/301project/2_MOUSE_PD1_DP/table_old/GSEA/C0.DP_PD1.csv"))  
+up <- t[t$avg_log2FC > 0 & t$p_val < 0.05,'V1']
+
+intersect(JUND_gene,up)
+
+```
+
+### 7.1.2 GO
+```{r,message=FALSE,warning=FALSE}
+####-----------GO----------------
+library(clusterProfiler)
+library(org.Mm.eg.db)
+ego <- enrichGO(
+  gene          = JUND_gene,
+  keyType       = "SYMBOL",
+  OrgDb         =  org.Mm.eg.db,
+  ont           = "ALL",
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 1,
+  qvalueCutoff  = 1,
+  #readable      = TRUE
+)
+
+t <- ego@result
+t <- t[as.numeric(t$p.adjust )<=0.05,]
+
+# fwrite(t,"/media/liyaru/LYR/301project/Fix/1_Jund_peak/3_Jund_ATAC_overlap/1.JunD_gain_peak_GO.csv")
+
+clusterProfiler::dotplot(ego,showCategory=c("lymphocyte differentiation",
+                           "positive regulation of GTPase activity",
+                           "alpha-beta T cell activation",
+                           "leukocyte cell-cell adhesion",
+                           "leukocyte migration",
+                           "cellular calcium ion homeostasis"))
+
+```
+
+
+
+## 7.2 ATAC & JunD signal
+```{r,message=FALSE,warning=FALSE}
+####--------- ATAC & JunD signal------------------------
+a <- fread("/media/liyaru/LYR/301project/Fix/1_Jund_peak/3_Jund_ATAC_overlap/4_ATAC_signal_and_public.csv")
+aa <- fread("/media/liyaru/LYR/301project/Fix/1_Jund_peak/3_Jund_ATAC_overlap/3_ATAC_JunD.csv")
+aa<- aa[,c("peak","V1")]
+colnames(aa)[2] <- "overlap_with_JunD"
+m <- merge(a,aa,by="peak")
+
+mm <- m[,c("peak","annotation","geneChr","geneStart","geneEnd","geneLength",
+           "distanceToTSS","SYMBOL","GENENAME","Ctrl","PD1","DP",
+           "ConRep1","ConRep2","PD1Rep1","PD1Rep2","DPRep1","DPRep2",
+           "Ctr_ATAC","PD1_ATAC","DP_ATAC",
+           "overlap_with_JunD")]
+table(mm$overlap_with_JunD)
+mm[mm$overlap_with_JunD > 1,'overlap_with_JunD'] = 1
+#fwrite(mm,"/media/liyaru/LYR/301project/Fix/Figure/ATAC.signal.JunD.csv")
+
+#t <- m[m$PD1 ==0 & m$DP==1,]
+t <- m
+
+# JunD
+tt <- t[t$overlap_with_JunD > 0,]
+
+# ttt <- tt[,c("ConRep1","ConRep2","PD1Rep1","PD1Rep2","DPRep1","DPRep2")]
+ttt <- tt[,c("Ctr_ATAC","PD1_ATAC","DP_ATAC")]
+
+
+m$class <- "other"
+m[m$PD1 == 0 & m$DP ==1,'class'] <- "DP_gain"
+m[m$PD1 == 1 & m$DP ==0,'class'] <- "DP_loss"
+table(m$class)
+
+b <- m[,c("overlap_with_JunD","Ctr_ATAC","PD1_ATAC","DP_ATAC")]
+b[b$overlap_with_JunD > 0, 'JunD'] = 'Have_JunD'
+b[b$overlap_with_JunD == 0, 'JunD'] = 'Other'
+b <- b[,2:5]
+table(b$JunD)
+
+bb <- melt(b,id.vars = c("JunD"))
+summary(bb)
+table(bb$JunD)
+
+colnames(bb) <- c("JunD","group","ATAC_signal")
+bb$ATAC_signal <- log10(bb$ATAC_signal+1)
+table(bb$JunD)
+
+
+bb$JunD <- factor(bb$JunD,levels = c("Have_JunD","Other"))
+
+p <- ggboxplot(bb,x="group",
+               y="ATAC_signal" ,
+               fill='group',
+               #color = "Treatment",
+               outlier.shape=NA,
+               #add="jitter"
+)
+# 
+stat_wilcox <- t_test(group_by(bb), ATAC_signal ~ group,paired = T)
+#stat_wilcox <- wilcox_test(group_by(bb), ATAC_signal ~ group,paired = T)
+stat_wilcox <- add_significance(stat_wilcox, 'p')
+stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'group')
+
+tapply(bb$ATAC_signal,bb$group,mean)
+tapply(bb$ATAC_signal,bb$group,median)
+
+p+ stat_pvalue_manual(stat_wilcox.test, 
+                      #label = 'p', 
+                      label = 'p.signif',
+                      tip.length = 0.005,
+                      hide.ns=T)+
+  scale_fill_manual(values = c(rgb(23,23,23,160, maxColorValue = 255),"#579125","#B9181E"))
+
+```
+
+```{r,message=FALSE,warning=FALSE}
+p <- ggboxplot(bb,x="JunD",y="ATAC_signal" ,
+               fill='group',
+               #color = "Treatment",
+               outlier.shape=NA,
+               #add="jitter"
+)
+
+
+stat_wilcox <- t_test(group_by(bb, JunD), ATAC_signal ~ group,paired = T)  
+stat_wilcox <- add_significance(stat_wilcox, 'p')  
+stat_wilcox.test <-  add_xy_position(stat_wilcox, x = 'JunD')
+
+p+ stat_pvalue_manual(stat_wilcox.test, 
+                      #label = 'p', 
+                      label = 'p.signif',
+                      tip.length = 0.005,
+                      hide.ns=T)+
+  scale_fill_manual(values = c(rgb(23,23,23,160, maxColorValue = 255),"#579125","#B9181E"))
+
+```
