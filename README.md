@@ -1,7 +1,7 @@
 # DP-treatment-Multiomics-analysis
 Code for ["Decitabine priming increases anti–PD-1 antitumor efficacy by promoting CD8+ progenitor exhausted T cell expansion in tumor models"](https://www.jci.org/articles/view/165673)
 
-<img src="https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/Design.png" style="width: 50%; height: 50%;">
+<img src="https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/Design.png">
 
 ## [ATAC-seq_data_processing](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/ATAC-seq_data_processing)
 ## [WGBS_data_processing](https://github.com/liyarubio/DP-treatment-Multiomics-analysis/blob/main/WGBS_data_processing)
